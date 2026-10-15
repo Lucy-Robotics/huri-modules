@@ -40,13 +40,13 @@ pip install -c constraints.txt --extra-index-url https://download.pytorch.org/wh
   -r packages/huri-module-tts/requirements-nvidia.tts_cosyvoice.txt
 pip install -e 'packages/huri-module-tts[cosyvoice]'
 packages/huri-module-tts/install_cosyvoice.sh /opt/cosyvoice   # not pip-installable
-export PYTHONPATH=/opt/cosyvoice:/opt/cosyvoice/third_party/Matcha-TTS
+export HURI_COSY_DIR=/opt/cosyvoice   # the handle puts it and its Matcha-TTS on sys.path
 HURI_MODULES=...,tts_cosyvoice ...   # instead of tts; see the env vars in huri_tts/cosyvoice/handle.py
 ```
 
 `huri hub install tts_cosyvoice` (or `pip install
 'huri-module-tts[cosyvoice]'`) does only the second line: torch and torchaudio,
-unpinned. The pins, the CosyVoice checkout and `PYTHONPATH` stay the steps
+unpinned. The pins, the CosyVoice checkout and `HURI_COSY_DIR` stay the steps
 above (`./install.sh --tts-engine cosyvoice` does all of them).
 
 Use `tts_cosyvoice` in place of `tts` in the server's `HURI_MODULES` and the

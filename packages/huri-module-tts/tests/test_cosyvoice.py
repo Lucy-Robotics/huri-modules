@@ -1,6 +1,12 @@
 """What can be checked of CosyVoice without its sources and model."""
 
-from huri_tts.cosyvoice.handle import CosyVoiceTTSHandle, _normalize_transcript
+import sys
+
+from huri_tts.cosyvoice.handle import (
+    CosyVoiceTTSHandle,
+    _add_cosyvoice_to_path,
+    _normalize_transcript,
+)
 from huri_tts.cosyvoice.module import CosyVoiceTTS
 
 
@@ -25,3 +31,14 @@ def test_the_module_binds_its_own_deployment():
         "huri.token",
         "huri.audio.out",
     )
+
+
+def test_cosy_dir_puts_the_checkout_and_matcha_on_the_path(tmp_path, monkeypatch):
+    # The Serve configs set HURI_COSY_DIR only, no per-host PYTHONPATH.
+    matcha = tmp_path / "third_party" / "Matcha-TTS"
+    matcha.mkdir(parents=True)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    _add_cosyvoice_to_path(str(tmp_path))
+    _add_cosyvoice_to_path(str(tmp_path))
+    assert sys.path.count(str(tmp_path)) == 1
+    assert sys.path.count(str(matcha)) == 1
