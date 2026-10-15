@@ -1,5 +1,9 @@
 # Fast checks on every push and pull request (~3 minutes).
 #
+# huri-core is not in this repository: the tests run against the ref pinned in
+# HURI_CORE_REF (blocking), and against huri-core's `dev` branch as a canary
+# (non-blocking), so a breaking change in core shows up here before a release.
+#
 # The expensive "does it actually install" run lives in install.yml, and the
 # GPU paths live in gpu.yml (self-hosted — no hosted runner has a GPU).
 #
@@ -41,13 +45,14 @@ jobs:
           }
       - name: bash -n
         run: |
-          for f in scripts/*.sh; do bash -n "$f" && echo "ok  $f"; done
+          for f in install.sh scripts/*.sh; do bash -n "$f" && echo "ok  $f"; done
+          sh -n deploy/install_huri.sh && echo "ok  deploy/install_huri.sh"
       - name: shellcheck
         # -x so it follows sourced files; warnings are informational for now
         # because install_local.sh predates this check.
-        run: shellcheck -x -S warning scripts/*.sh || true
+        run: shellcheck -x -S warning install.sh scripts/*.sh deploy/install_huri.sh || true
       - name: shellcheck (errors must be clean)
-        run: shellcheck -x -S error scripts/*.sh
+        run: shellcheck -x -S error install.sh scripts/*.sh deploy/install_huri.sh
 
   configs:
     name: shipped configs parse
@@ -103,24 +108,30 @@ jobs:
       - name: install the lint toolchain only
         # mypy has ignore_missing_imports, so it runs without ray/torch/etc.
         run: pip install -c constraints.txt black isort flake8 flake8-toml-config mypy
-      - run: black --check huri_core tests
-      - run: isort --check-only huri_core tests
-      - run: flake8 huri_core tests
+      - name: huri-core's source at the pinned ref, for mypy
+        # Its types: installed huri-core ships no py.typed, so mypy would see
+        # every framework class as Any. A checkout on MYPYPATH is read as source.
+        run: |
+          git clone --quiet --depth 1 --branch "$(cat HURI_CORE_REF)" \
+            https://github.com/Lucy-Robotics/huri-core.git "$RUNNER_TEMP/huri-core"
+          echo "MYPYPATH=$RUNNER_TEMP/huri-core" >> "$GITHUB_ENV"
+      - run: black --check packages examples tests check_registry.py scripts
+      - run: isort --check-only packages examples tests check_registry.py scripts
+      - run: flake8 packages examples tests check_registry.py scripts
       - name: mypy
         # Not gating yet: packages/huri-module-rag/huri_rag/{semantic_chunker,ingestion}.py carry
         # pre-existing errors. Remove `|| true` once those are fixed.
-        run: mypy huri_core packages --check-untyped-defs || true
+        run: mypy packages examples --check-untyped-defs || true
       - name: mypy (files that are already clean must stay clean)
         # --follow-imports=silent: report only on the files listed below.
-        # modules.py imports MOV, so mypy follows it into
-        # gesture/emage/modeling.py and reported its 3 pre-existing
-        # transformers errors against this gate. Those surface only when
-        # transformers is importable, so a `type: ignore` would flip between
-        # needed and unused depending on the environment.
+        # The MOV package follows into gesture/emage/modeling.py, whose 3
+        # pre-existing transformers errors surface only when transformers is
+        # importable, so a `type: ignore` would flip between needed and unused
+        # depending on the environment.
         run: |
           mypy --check-untyped-defs --follow-imports=silent \
-            huri_core/core packages/huri-events/huri_events examples/cli/huri_cli packages/huri-tts/huri_tts \
-            packages/huri-module-vad/huri_vad packages/huri-module-stt/huri_stt packages/huri-module-tag/huri_tag
+            packages/huri-events/huri_events examples/cli/huri_cli packages/huri-tts/huri_tts \
+            packages/huri-module-vad/huri_vad packages/huri-module-stt/huri_stt packages/huri-module-tag/huri_tag check_registry.py
 
   plan:
     name: installer plan (${{ matrix.name }})
@@ -175,13 +186,13 @@ jobs:
         run: echo "HURI_PY=${{ matrix.python }}" >> "$GITHUB_ENV"
 
       - name: plan
-        run: ./scripts/install_local.sh --plan-only --python "$HURI_PY"
+        run: ./install.sh --plan-only --python "$HURI_PY"
 
       - name: the plan must reach a usable verdict
         # A GPU-less runner is the portable baseline: piper means voice out works
         # anyway, so anything less than a voice pipeline is a regression.
         run: |
-          ./scripts/install_local.sh --plan-only --python "$HURI_PY" >plan.txt 2>&1
+          ./install.sh --plan-only --python "$HURI_PY" >plan.txt 2>&1
           grep -E 'VERDICT: (voice|full) pipeline' plan.txt \
             || { echo "::error::no voice pipeline planned on a CPU-only host"; cat plan.txt; exit 1; }
           grep -qE '^\s+tts\s+piper' plan.txt \
@@ -190,7 +201,7 @@ jobs:
       - name: flag surface
         run: |
           set -e
-          run() { echo "--- $*"; ./scripts/install_local.sh --plan-only --python "$HURI_PY" "$@" >/dev/null; }
+          run() { echo "--- $*"; ./install.sh --plan-only --python "$HURI_PY" "$@" >/dev/null; }
           run --profile cpu
           run --modules rag
           run --modules vad,stt,tag,qag,rag
@@ -201,9 +212,9 @@ jobs:
           run --llm-url http://remote.example:8000 --llm-model foo
           run --vram 8192 --profile cpu
           echo "--- rejections"
-          ! ./scripts/install_local.sh --plan-only --python "$HURI_PY" --modules bogus >/dev/null 2>&1
-          ! ./scripts/install_local.sh --plan-only --python "$HURI_PY" --tts-engine nope >/dev/null 2>&1
-          ! ./scripts/install_local.sh --plan-only --python "$HURI_PY" --stt-device tpu >/dev/null 2>&1
+          ! ./install.sh --plan-only --python "$HURI_PY" --modules bogus >/dev/null 2>&1
+          ! ./install.sh --plan-only --python "$HURI_PY" --tts-engine nope >/dev/null 2>&1
+          ! ./install.sh --plan-only --python "$HURI_PY" --stt-device tpu >/dev/null 2>&1
           echo "all flag cases behaved as expected"
 
       - name: upload the plan
@@ -219,8 +230,22 @@ jobs:
           if-no-files-found: ignore
 
   test:
-    name: pytest
+    # pinned: the huri-core ref in HURI_CORE_REF, what a release of this
+    # repository is tested against — blocking. canary: huri-core's dev branch,
+    # non-blocking, to see a breaking core change before it is released.
+    name: pytest (huri-core ${{ matrix.name }})
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.canary }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: pinned
+            core_ref: ""
+            canary: false
+          - name: dev canary
+            core_ref: dev
+            canary: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -238,14 +263,21 @@ jobs:
             --index-url https://download.pytorch.org/whl/cpu \
             torch==2.3.1 torchaudio==2.3.1
           pip install -c constraints.txt -r serve_requirements.txt -r requirements.txt
-          # Registers the modules and events (entry points) — HuRI finds them there.
-          pip install --no-deps -e . -e examples/cli
+      - name: install huri-core
+        run: |
+          ref="${{ matrix.core_ref }}"
+          ref="${ref:-$(cat HURI_CORE_REF)}"
+          echo "huri-core at $ref"
+          pip install -c constraints.txt \
+            "huri-core[server,client,dev] @ git+https://github.com/Lucy-Robotics/huri-core.git@$ref"
+      - name: install the curated events and modules, and the CLI
+        # Registers the modules and events (entry points) — HuRI finds them there.
+        run: |
+          pip install --no-deps -e examples/cli
           for pkg in packages/*/; do pip install --no-deps -e "$pkg"; done
       - run: pytest -q
       - name: the curated-module registry matches its packages
-        run: python huri-modules/check_registry.py
-      - name: the landing pages and READMEs link to things that exist
-        run: python landing/check_links.py landing README.md huri-modules templates examples packages
+        run: python check_registry.py
       - name: the shipped client configs load through the real loader
         # Stricter than the `configs` job: this exercises ClientConfig.from_dict
         # and the sender/hook/module dataclasses, not just YAML syntax.

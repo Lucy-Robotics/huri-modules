@@ -99,7 +99,7 @@ def source_dir(
         problems.append(f"{where}: every 'source' value must be a non-empty string")
         return None
     if "path" in source:
-        return repo / source["path"]
+        return repo / str(source["path"])
 
     if not source["git"].startswith("https://"):
         problems.append(f"{where}: git source must be an https URL")
@@ -121,7 +121,7 @@ def source_dir(
     if head != tagged:
         problems.append(f"{where}: {submodule} is not at tag {source['tag']!r}")
         return None
-    return checkout / source.get("subdirectory", ".")
+    return checkout / str(source.get("subdirectory", "."))
 
 
 def check(

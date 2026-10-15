@@ -28,7 +28,7 @@
 # Registering the runner (once, on the GPU machine)
 # ---------------------------------------------------------------------------
 #   Settings > Actions > Runners > New self-hosted runner, then:
-#     ./config.sh --url https://github.com/Sentience-Robotics/HuRI \
+#     ./config.sh --url https://github.com/Lucy-Robotics/huri-modules \
 #                 --token <TOKEN> --labels self-hosted,linux,gpu,rocm
 #     sudo ./svc.sh install && sudo ./svc.sh start
 #
@@ -73,13 +73,13 @@ jobs:
         # Exercises the vendor wheel path itself: which index the AMD branch
         # pulls torch from, and whether install_ct2_rocm really replaces the
         # PyPI CTranslate2 (it silently did not, before --force-reinstall).
-        run: ./scripts/install_local.sh -y --only python,models --skip-services
+        run: ./install.sh -y --only python,models --skip-services
 
       - name: plan
-        run: ./scripts/install_local.sh --plan-only
+        run: ./install.sh --plan-only
 
       - name: verify against real hardware
-        run: ./scripts/install_local.sh -y --only config,verify
+        run: ./install.sh -y --only config,verify
 
       - name: the GPU must be usable, not merely present
         # torch.cuda.is_available() is True on a wheel with no kernels for this

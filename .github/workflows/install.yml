@@ -1,5 +1,6 @@
-# The expensive check: does scripts/install_local.sh actually install a working
-# HuRI on a clean machine?
+# The expensive check: does ./install.sh (scripts/install_local.sh) actually
+# install a working HuRI on a clean machine? huri-core comes from its repository
+# at the ref in HURI_CORE_REF, as for any user.
 #
 # Nightly and on demand rather than per-push, because a full CPU install pulls
 # ~3.5 GB of wheels and takes 15-30 minutes per target. CI.yml covers the cheap
@@ -60,7 +61,7 @@ jobs:
         #                            regardless of the runner's RAM
         # --python /usr/bin/python3: 3.12 on 24.04, 3.10 on 22.04 — both supported
         run: |
-          ./scripts/install_local.sh -y \
+          ./install.sh -y \
             --profile cpu \
             --python /usr/bin/python3 \
             --tts-engine "${{ github.event.inputs.tts_engine || 'piper' }}" \
@@ -110,7 +111,7 @@ jobs:
 
       - name: a module subset also installs and generates cleanly
         run: |
-          ./scripts/install_local.sh -y --only config,verify \
+          ./install.sh -y --only config,verify \
             --profile cpu --python /usr/bin/python3 --skip-services \
             --modules vad,stt,tag,qag,rag --llm-model qwen2.5:1.5b
           grep -q 'HURI_MODULES: "vad,stt,tag,qag,rag"' config/huri_local.generated.yaml \

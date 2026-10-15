@@ -4,7 +4,8 @@
 #
 # Building an image already checks HuRI's own side: deploy/install_huri.sh
 # fails the build if a module or event does not load, or if the installed
-# versions do not satisfy the modules' manifests.
+# versions do not satisfy the modules' manifests. huri-core is installed from
+# its repository at the ref in HURI_CORE_REF (the build arg below).
 name: Docker images
 
 on:
@@ -12,8 +13,7 @@ on:
     paths:
       - "deploy/**"
       - "packages/**"
-      - "huri_core/**"
-      - "pyproject.toml"
+      - "HURI_CORE_REF"
       - "*requirements*.txt"
       - "constraints.txt"
       - ".dockerignore"
@@ -40,7 +40,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: build deploy/Dockerfile.base
-        run: docker build -f deploy/Dockerfile.base -t huri:ci-base .
+        run: |
+          docker build -f deploy/Dockerfile.base \
+            --build-arg HURI_CORE_REF="$(cat HURI_CORE_REF)" -t huri:ci-base .
       - name: start HuRI in the image (tag + qag, no model needed)
         run: |
           docker run -d --name huri --shm-size=2g -p 127.0.0.1:8000:8000 \
@@ -58,7 +60,8 @@ jobs:
       - name: a client session through the SDK
         run: |
           pip install websockets omegaconf numpy
-          pip install --no-deps . ./packages/huri-events
+          pip install --no-deps ./packages/huri-events \
+            "huri-core @ git+https://github.com/Lucy-Robotics/huri-core.git@$(cat HURI_CORE_REF)"
           python deploy/smoke_session.py ws://127.0.0.1:8000/session
       - if: failure()
         run: docker logs huri || true
@@ -79,4 +82,6 @@ jobs:
           docker system prune -af
           df -h /
       - uses: actions/checkout@v4
-      - run: docker build -f deploy/Dockerfile.${{ matrix.target }} -t huri:ci-${{ matrix.target }} .
+      - run: |
+          docker build -f deploy/Dockerfile.${{ matrix.target }} \
+            --build-arg HURI_CORE_REF="$(cat HURI_CORE_REF)" -t huri:ci-${{ matrix.target }} .
