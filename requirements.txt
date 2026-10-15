@@ -31,4 +31,6 @@ semantic_chunker==0.2.0
 sounddevice==0.5.5
 websockets==16.0
 omegaconf==2.3.0
+# huri-cli's (the reference client, installed by ./install.sh from its own
+# repository), pinned here to the version tested with the rest
 prompt-toolkit==3.0.52

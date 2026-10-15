@@ -28,7 +28,6 @@ DEFAULT = [
     "ACCEPTANCE.md",
     "modules/README.md",
     "packages",
-    "examples",
 ]
 
 _LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)\)")

@@ -1,3 +1,10 @@
+# A HuRI session, as a client sends it: the generic template (huri-core's
+# ClientConfig errors link here). Only the keys below are HuRI's; a client may
+# add its own sections, which the server never reads: huri-cli
+# (https://github.com/Lucy-Robotics/huri-cli) reads its device settings from
+# `cli:`, as in the config ./install.sh generates
+# (config/client_local.generated.yaml), and its own example configs.
+
 # HuRI websocket server url
 huri_url: ws://localhost:8000/session
 

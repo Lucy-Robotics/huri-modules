@@ -1,8 +1,8 @@
 # The same paths as CI's lint job (.github/workflows/ci.yml): only the code this
 # repository owns, never the third-party submodules under modules/.
-LINT_PATHS = packages examples tests check_registry.py scripts
+LINT_PATHS = packages tests check_registry.py scripts
 # The files mypy gates on in CI (the rest of packages/ has pre-existing errors).
-MYPY_PATHS = packages/huri-events/huri_events examples/cli/huri_cli \
+MYPY_PATHS = packages/huri-events/huri_events \
 	packages/huri-module-tts/huri_tts packages/huri-module-vad/huri_vad \
 	packages/huri-module-stt/huri_stt packages/huri-module-tag/huri_tag \
 	packages/huri-hub/huri_hub check_registry.py

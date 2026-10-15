@@ -1,6 +1,6 @@
 # Tool settings only. The repository root is not a distribution: what is
-# installable lives in packages/* (one distribution each) and examples/cli, and
-# huri-core comes from its own repository at the ref in HURI_CORE_REF.
+# installable lives in packages/* (one distribution each); huri-core and
+# huri-cli come from their own repositories at the refs in versions.env.
 
 [tool.black]
 line-length = 88
@@ -39,7 +39,7 @@ exclude = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "packages/*/tests"]
-# The distributions in this repo (packages/*, examples/cli), importable from a
+# The distributions in this repo (packages/*), importable from a
 # plain checkout; CI and the installer also install them editable.
 pythonpath = [
   "packages/huri-events",
@@ -51,6 +51,5 @@ pythonpath = [
   "packages/huri-module-mov",
   "packages/huri-module-tts",
   "packages/huri-hub",
-  "examples/cli",
 ]
 python_files = ["test_*.py"]
