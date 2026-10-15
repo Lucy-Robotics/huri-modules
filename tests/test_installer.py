@@ -146,6 +146,22 @@ def test_unreachable_repository_fails_without_prompting(tmp_path):
     assert "SSH_ASKPASS=<unset>" in calls
 
 
+def test_a_ref_from_the_environment_is_blamed_on_the_environment(tmp_path):
+    bin_dir, _ = fake_git(tmp_path)
+    lib = git_library(tmp_path, "HURI_CORE_REF=dev\n")
+    out = subprocess.run(
+        ["bash", str(lib), "resolve_ref", "huri-core", "u", "foo", "HURI_CORE_PATH"],
+        env=env_with(bin_dir, HURI_CORE_REF="foo"),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert out.returncode != 0
+    assert "check HURI_CORE_REF (set in the environment)" in out.stderr
+    assert "versions.env" not in out.stderr
+
+
 def test_missing_ref_names_the_ref_to_fix(tmp_path):
     bin_dir, _ = fake_git(tmp_path, body="exit 0")  # reachable, no such ref
     lib = git_library(tmp_path, "HURI_CLI_REF=nope\n")
@@ -303,3 +319,83 @@ def test_help_documents_the_cli_switches():
     assert out.returncode == 0
     for word in ("--no-cli", "HURI_CLI_REF", "HURI_CLI_PATH", "versions.env"):
         assert word in out.stdout
+
+
+@pytest.mark.skipif(not supported_python(), reason="the planner wants 3.10-3.12")
+@pytest.mark.parametrize("name", ["core", "cli"])
+@pytest.mark.parametrize("valid", [False, True], ids=["invalid", "valid"])
+def test_a_local_checkout_path_is_checked_and_needs_no_git(tmp_path, name, valid):
+    bin_dir, log = fake_git(tmp_path)
+    repo = installer_copy(tmp_path)
+    checkout = tmp_path / f"huri-{name}"
+    checkout.mkdir()
+    if valid:
+        (checkout / "pyproject.toml").write_text("[project]\n")
+        (checkout / f"huri_{name}").mkdir()
+    var = f"HURI_{name.upper()}_PATH"
+    out = subprocess.run(
+        [
+            str(repo / "install.sh"),
+            "--plan-only",
+            "--profile",
+            "cpu",
+            "--python",
+            sys.executable,
+        ],
+        cwd=repo,
+        env=env_with(bin_dir, **{var: str(checkout)}),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if valid:
+        assert out.returncode == 0, out.stdout + out.stderr
+        assert f"editable from {checkout} ({var})" in out.stdout
+    else:
+        assert out.returncode == 2
+        assert f"{var}='{checkout}' is not a huri-{name} checkout" in out.stderr
+    assert not log.exists()
+
+
+STUB = """#!/bin/sh
+echo "$(basename "$0") $*" >>"{log}"
+exit 0
+"""
+
+
+@pytest.mark.skipif(not supported_python(), reason="the planner wants 3.10-3.12")
+def test_an_unreachable_ref_fails_before_anything_is_installed(tmp_path):
+    bin_dir, log = fake_git(tmp_path)
+    changes = tmp_path / "changes.log"
+    for tool in ("sudo", "apt-get", "dnf", "pacman", "zypper", "brew", "pip", "uv"):
+        stub = bin_dir / tool
+        stub.write_text(STUB.format(log=changes))
+        stub.chmod(0o755)
+    repo = installer_copy(tmp_path)
+    out = subprocess.run(
+        [
+            str(repo / "install.sh"),
+            "--yes",
+            "--profile",
+            "cpu",
+            # The smallest plan, so the disk/RAM checks pass on any machine.
+            "--modules",
+            "rag",
+            "--skip-models",
+            "--skip-services",
+            "--python",
+            sys.executable,
+        ],
+        cwd=repo,
+        env=env_with(bin_dir),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert out.returncode != 0
+    assert "cannot reach huri-core at ref dev" in out.stdout + out.stderr
+    assert "ls-remote" in log.read_text()
+    assert not changes.exists(), changes.read_text()
+    assert not (repo / ".venv").exists()

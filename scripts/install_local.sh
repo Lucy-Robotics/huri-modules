@@ -75,11 +75,16 @@ versions_get() {
 
 # huri-core: the framework. A release tag ("0.4.0") on main; on dev, that tag or
 # "dev" (see RELEASING.md). The environment overrides the file.
+# Where each ref came from, for error messages: the environment or the file.
 HURI_CORE_GIT="https://github.com/Lucy-Robotics/huri-core.git"
+if [[ -n "${HURI_CORE_REF:-}" ]]; then HURI_CORE_REF_FROM="the environment"
+else HURI_CORE_REF_FROM="versions.env"; fi
 HURI_CORE_REF="${HURI_CORE_REF:-$(versions_get HURI_CORE_REF)}"
 HURI_CORE_PATH="${HURI_CORE_PATH:-}"
 # huri-cli: the reference client, installed unless --no-cli.
 HURI_CLI_GIT="https://github.com/Lucy-Robotics/huri-cli.git"
+if [[ -n "${HURI_CLI_REF:-}" ]]; then HURI_CLI_REF_FROM="the environment"
+else HURI_CLI_REF_FROM="versions.env"; fi
 HURI_CLI_REF="${HURI_CLI_REF:-$(versions_get HURI_CLI_REF)}"
 HURI_CLI_PATH="${HURI_CLI_PATH:-}"
 # The commits the refs name, resolved by resolve_refs when installing (never by
@@ -726,7 +731,11 @@ resolve_ref() {
   if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
     printf '%s\n' "$ref"; return 0
   fi
-  local fix="check ${path_var%_PATH}_REF in versions.env, or set $path_var to a local checkout"
+  local ref_var="${path_var%_PATH}_REF" from_var="${path_var%_PATH}_REF_FROM"
+  local from="${!from_var:-versions.env}" where
+  if [[ "$from" == "versions.env" ]]; then where="in versions.env"
+  else where="(set in $from)"; fi
+  local fix="check $ref_var $where, or set $path_var to a local checkout"
   have git || die "cannot resolve $name ref $ref: git is not installed ($fix)"
   local refs timeout=()
   have timeout && timeout=(timeout 30)
@@ -3011,6 +3020,13 @@ main() {
   if ! confirm "Proceed with the install described above?"; then
     info "aborted — nothing was changed"
     return 0
+  fi
+
+  # Resolve the git refs before changing anything: a missing, private or
+  # misspelt ref fails here, not after system packages and GBs of wheels.
+  # (install_python_deps calls it again; it skips refs already resolved.)
+  if stage_enabled python && (( ! SKIP_PYTHON )); then
+    resolve_refs
   fi
 
   install_system_packages
