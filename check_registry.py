@@ -11,7 +11,9 @@ only produces topics of an event package it declares. Every curated module
 (packages/huri-module-*) must be listed. --run-tests also runs each listed
 package's own tests (huri_core.testing, no Ray needed).
 
-A `source` is one of two kinds:
+The registry's schema is huri-hub's (huri_hub.registry, what `huri hub` reads
+it with): this checks every entry with it, then what needs this repository. A
+`source` is one of two kinds:
 
     source = { path = "packages/huri-module-stt" }       # curated, in this repo
     source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0",
@@ -31,7 +33,12 @@ problem.
 entry (`modules/<name>[/<subdirectory>]`), one per line, for CI to
 `pip install -e` them; it checks nothing else.
 
-Needs the listed packages installed (pip install -e), like the server.
+Every distribution under packages/ is classified: a module package or an
+event package is listed, and anything else must be one of the known libraries
+and tools (UNLISTED), so a new package cannot be left out silently.
+
+Needs the listed packages and huri-hub installed (pip install -e), like the
+server.
 """
 
 import argparse
@@ -44,6 +51,13 @@ from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from huri_hub.registry import (
+    check_events_entry,
+    check_module_entry,
+    check_source,
+    parse,
+)
+from huri_hub.web import HubError
 from packaging.requirements import Requirement
 
 from huri_core.core.compat import CompatibilityError, check_manifests, check_modules
@@ -57,10 +71,11 @@ from huri_core.core.plugins import (
 )
 
 REPO = Path(__file__).resolve().parent
-# Source kind -> (required keys, optional keys).
-SOURCE_KEYS = {
-    "path": ({"path"}, set()),
-    "git": ({"git", "tag", "submodule"}, {"subdirectory"}),
+# Distributions of packages/ that provide no module and no event, so are not
+# in the registry: a library the curated modules share, and a tool.
+UNLISTED = {
+    "huri-tts": "the library both TTS modules share",
+    "huri-hub": "the `huri hub` command, this registry's reader",
 }
 
 
@@ -73,6 +88,12 @@ def _pyproject(path: Path) -> Dict[str, Any]:
 
 def _norm(name: str) -> str:
     return name.replace("_", "-").lower()
+
+
+def load(registry_path: Path) -> Dict[str, Any]:
+    """The registry, through huri-hub's reader; HubError when `huri hub`
+    could not read it (not TOML, another schema)."""
+    return parse(registry_path.read_text(), str(registry_path))
 
 
 def _git(directory: Path, *args: str) -> Optional[str]:
@@ -95,32 +116,16 @@ def source_dir(
     (added to `problems`) or a third-party submodule that is not checked out
     (added to `skipped`). `verify=False` skips the checks against .gitmodules
     and the remote tag."""
-    if not isinstance(source, dict):
-        problems.append(f"{where}: 'source' must be a table")
+    try:
+        kind = check_source(where, source)
+    except HubError as e:
+        problems.append(str(e))
         return None
-    kinds = [kind for kind in SOURCE_KEYS if kind in source]
-    if len(kinds) != 1:
-        problems.append(f"{where}: 'source' needs exactly one of 'path' or 'git'")
-        return None
-    required, optional = SOURCE_KEYS[kinds[0]]
-    missing = sorted(required - set(source))
-    unknown = sorted(set(source) - required - optional)
-    if missing or unknown:
-        problems.append(
-            f"{where}: {kinds[0]} source"
-            + (f" lacks {missing}" if missing else "")
-            + (f" has unknown {unknown}" if unknown else "")
-        )
-        return None
-    if not all(isinstance(value, str) and value for value in source.values()):
-        problems.append(f"{where}: every 'source' value must be a non-empty string")
-        return None
-    if "path" in source:
+    if kind == "path":
         return repo / str(source["path"])
 
-    if not source["git"].startswith("https://"):
-        problems.append(f"{where}: git source must be an https URL")
-        return None
+    # Where this repository pins it: a rule of this repository, not of the
+    # schema (`huri hub` does not need the submodule).
     submodule = Path(source["submodule"])
     if submodule.parent != Path("modules"):
         problems.append(f"{where}: submodule must be modules/<name>, not {submodule}")
@@ -213,7 +218,7 @@ def remote_tag(git_url: str, tag: str) -> Optional[str]:
 
 def install_dirs(registry_path: Path, repo: Path = REPO) -> List[Path]:
     """The package directory of each checked-out third-party entry."""
-    registry = tomllib.loads(registry_path.read_text())
+    registry = load(registry_path)
     dirs: List[Path] = []
     for entry in registry.get("events", []) + registry.get("module", []):
         source = entry.get("source")
@@ -236,9 +241,10 @@ def check(
     when `strict`."""
     problems: List[str] = []
     skipped = [] if skipped is None else skipped
-    registry = tomllib.loads(registry_path.read_text())
-    if registry.get("schema") != 1:
-        return [f"unsupported schema {registry.get('schema')!r} (expected 1)"]
+    try:
+        registry = load(registry_path)
+    except HubError as e:
+        return [str(e)]
 
     # Which distribution registers each event namespace.
     namespace_owner: Dict[str, str] = {}
@@ -246,16 +252,18 @@ def check(
         dist = getattr(ep, "dist", None)
         namespace_owner[topic_namespace(ep.name)] = _norm(dist.name) if dist else "?"
 
-    for entry in registry.get("events", []):
+    for i, entry in enumerate(registry.get("events", [])):
+        try:
+            package = repo / check_events_entry(i, entry)
+        except HubError as e:
+            problems.append(str(e))
+            continue
         where = f"events {entry.get('package')!r}"
-        source = source_dir(entry.get("source"), where, repo, problems, skipped)
-        if source is None:
+        if not (package / "pyproject.toml").is_file():
+            problems.append(f"{where}: no package at source {package}")
             continue
-        if not (source / "pyproject.toml").is_file():
-            problems.append(f"{where}: no package at source {source}")
-            continue
-        if _norm(_pyproject(source)["name"]) != _norm(entry["package"]):
-            problems.append(f"{where}: {source} is {_pyproject(source)['name']}")
+        if _norm(_pyproject(package)["name"]) != _norm(entry["package"]):
+            problems.append(f"{where}: {package} is {_pyproject(package)['name']}")
         owner = namespace_owner.get(entry.get("namespace", ""))
         if owner != _norm(entry["package"]):
             problems.append(
@@ -265,8 +273,12 @@ def check(
 
     listed: Dict[str, Dict[str, Any]] = {}
     checked: List[str] = []  # listed and with a package at hand
-    for entry in registry.get("module", []):
-        name = entry.get("name", "<missing>")
+    for i, entry in enumerate(registry.get("module", [])):
+        try:
+            name = check_module_entry(i, entry)
+        except HubError as e:
+            problems.append(str(e))
+            continue
         where = f"module {name!r}"
         if name in listed:
             problems.append(f"{where}: listed twice")
@@ -317,8 +329,24 @@ def check(
                 )
 
     curated = set()
-    for path in sorted((repo / "packages").glob("huri-module-*")):
-        curated |= set(_pyproject(path).get("entry-points", {}).get("huri.modules", {}))
+    events_listed = {_norm(str(e.get("package"))) for e in registry.get("events", [])}
+    for path in sorted((repo / "packages").glob("*/pyproject.toml")):
+        project = _pyproject(path.parent)
+        provides = project.get("entry-points", {})
+        curated |= set(provides.get("huri.modules", {}))
+        if "huri.modules" in provides or _norm(project["name"]) in UNLISTED:
+            continue
+        if "huri.events" in provides:
+            if _norm(project["name"]) not in events_listed:
+                problems.append(
+                    f"curated event package {project['name']!r} (packages/) is not "
+                    "in the registry"
+                )
+            continue
+        problems.append(
+            f"packages/{path.parent.name} provides no module and no event, and is "
+            "not a known library or tool (check_registry.UNLISTED)"
+        )
     for name in sorted(curated - set(listed)):
         problems.append(f"curated module {name!r} (packages/) is not in the registry")
 
@@ -341,7 +369,7 @@ def check(
 
 
 def run_tests(registry_path: Path, repo: Path = REPO) -> List[str]:
-    registry = tomllib.loads(registry_path.read_text())
+    registry = load(registry_path)
     sources = set()
     for entry in registry.get("module", []) + registry.get("events", []):
         # Already verified by check(), which runs first.

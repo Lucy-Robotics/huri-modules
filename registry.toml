@@ -11,6 +11,10 @@
 #       a verified third-party module, pinned as a git submodule at that tag and
 #       installed as git+<git>@<tag> (optional key: subdirectory = "<dir>",
 #       appended as #subdirectory=<dir>)
+#
+# The schema has one reader, huri-hub's (packages/huri-hub/huri_hub/registry.py),
+# which both `huri hub` and check_registry.py use: a new key is a change there,
+# released with a huri-hub version bump (RELEASING.md).
 
 schema = 1
 

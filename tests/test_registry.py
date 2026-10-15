@@ -1,4 +1,5 @@
-"""registry.toml and its checker (check_registry.py)."""
+"""registry.toml and its checker (check_registry.py), which reads it with
+huri-hub's parser (huri_hub.registry): the schema rules have one home."""
 
 import importlib.util
 import re
@@ -85,6 +86,37 @@ def test_an_unknown_module_name(check):
     assert any("module 'tagx'" in p and "provides ['tag']" in p for p in problems)
 
 
+def test_the_schema_is_huri_hubs(check):
+    # The same reader as `huri hub`: what it refuses, CI refuses.
+    assert check("schema = 2\n")[0].endswith(
+        "has registry schema 2; this huri-hub reads schema 1: upgrade huri-hub, "
+        "or use a huri-modules release built for it (HURI_MODULES_REF)"
+    )
+    text = REGISTRY.read_text().replace(
+        'huri_core = ">=0.4.0.dev0,<0.5"', 'huri_core = "bogus"', 1
+    )
+    assert any("invalid huri_core range 'bogus'" in p for p in check(text))
+
+
+def test_every_package_is_listed_or_a_known_library_or_tool(check, monkeypatch):
+    assert set(checker.UNLISTED) == {"huri-tts", "huri-hub"}
+    monkeypatch.delitem(checker.UNLISTED, "huri-hub")
+    assert check(REGISTRY.read_text()) == [
+        "packages/huri-hub provides no module and no event, and is not a known "
+        "library or tool (check_registry.UNLISTED)"
+    ]
+
+
+def test_an_event_package_missing_from_the_registry_is_reported(check):
+    text = REGISTRY.read_text()
+    start = text.index("[[events]]")
+    end = text.index("[[module]]")
+    problems = check(text[:start] + text[end:])
+    assert "curated event package 'huri-events' (packages/) is not in the " in (
+        " ".join(problems)
+    )
+
+
 def test_events_namespace_must_belong_to_the_listed_package(check):
     text = REGISTRY.read_text().replace('namespace = "huri"', 'namespace = "acme"', 1)
     assert any("namespace 'acme'" in p for p in check(text))
@@ -117,7 +149,7 @@ def test_a_submodule_not_checked_out_is_skipped_unless_strict(tmp_path):
     "source,fragment",
     [
         ('{ git = "https://x.org/a", tag = "0.1.0" }', "lacks ['submodule']"),
-        ('{ path = "packages/x", git = "https://x.org/a" }', "exactly one of"),
+        ('{ path = "packages/x", git = "https://x.org/a" }', "not both"),
         (
             '{ git = "https://x.org", tag = "1", submodule = "modules/a", ref = "" }',
             "has unknown ['ref']",
@@ -129,6 +161,11 @@ def test_a_submodule_not_checked_out_is_skipped_unless_strict(tmp_path):
         ),
         (
             '{ git = "https://x.org/a", tag = "", submodule = "modules/a" }',
+            "must pin a `tag`",
+        ),
+        (
+            '{ git = "https://x.org/a", tag = "1", submodule = "modules/a", '
+            'subdirectory = "" }',
             "non-empty string",
         ),
     ],
