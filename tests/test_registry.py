@@ -88,8 +88,8 @@ def test_an_unknown_module_name(check):
 
 def test_the_schema_is_huri_hubs(check):
     # The same reader as `huri hub`: what it refuses, CI refuses.
-    assert check("schema = 2\n")[0].endswith(
-        "has registry schema 2; this huri-hub reads schema 1: upgrade huri-hub, "
+    assert check("schema = 3\n")[0].endswith(
+        "has registry schema 3; this huri-hub reads schema 2: upgrade huri-hub, "
         "or use a huri-modules release built for it (HURI_MODULES_REF)"
     )
     text = REGISTRY.read_text().replace(
@@ -104,9 +104,9 @@ def test_the_schema_is_huri_hubs(check):
 def test_the_schema_key_is_required(check):
     # `huri hub` reads a registry without it as its own schema; CI does not.
     text = REGISTRY.read_text()
-    assert text.startswith("schema = 1\n") or "\nschema = 1\n" in text
-    problems = check(text.replace("schema = 1\n", "", 1))
-    assert len(problems) == 1 and problems[0].endswith("missing `schema` (expected 1)")
+    assert text.startswith("schema = 2\n") or "\nschema = 2\n" in text
+    problems = check(text.replace("schema = 2\n", "", 1))
+    assert len(problems) == 1 and problems[0].endswith("missing `schema` (expected 2)")
 
 
 def test_a_module_listed_twice(check):

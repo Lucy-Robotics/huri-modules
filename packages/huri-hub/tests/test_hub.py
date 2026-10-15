@@ -18,7 +18,7 @@ from huri_hub import registry as reg
 from huri_hub import web
 
 REGISTRY_TEXT = """
-schema = 1
+schema = 2
 
 [[events]]
 package = "huri-events"
@@ -421,28 +421,79 @@ def test_its_dependencies_are_its_own():
     assert "tomli>=2; python_version < '3.11'" in requires
 
 
-PIPER_PYPROJECT = """
+TTS_ENTRIES = """
+[[module]]
+name = "tts"
+package = "huri-module-tts"
+huri_core = ">=0.4.0.dev0,<0.5"
+verified = 2026-10-12
+source = { path = "packages/huri-module-tts" }
+extra = "piper"
+
+[[module]]
+name = "servo"
+package = "huri-module-servo"
+huri_core = ">=0.4.0.dev0,<0.5"
+verified = 2026-10-12
+extra = "gpio"
+[module.source]
+git = "https://github.com/acme/huri-module-servo"
+tag = "0.1.0"
+submodule = "modules/servo"
+"""
+
+
+def test_an_entry_with_an_extra_installs_its_package_with_it(capsys, checkout):
+    (checkout / "registry.toml").write_text(REGISTRY_TEXT + TTS_ENTRIES)
+    tts = checkout / "packages" / "huri-module-tts"
+    tts.mkdir()
+    code, out = run(
+        ["install", "tts", "--dry-run", "--registry", str(checkout)], capsys
+    )
+    assert code == 0
+    assert f"pip install {tts}[piper] {checkout / 'packages' / 'huri-events'}\n" in out
+
+
+def test_an_extra_names_the_package_in_a_url_target(monkeypatch):
+    monkeypatch.setenv("HURI_MODULES_REF", "0.1.0")
+    url = "https://example.org/registry.toml"
+    modules = {
+        m.name: m
+        for m in reg.load_registry(url, fetch=lambda u: REGISTRY_TEXT + TTS_ENTRIES)
+    }
+    repo = "git+https://github.com/Lucy-Robotics/huri-modules.git@0.1.0"
+    assert modules["tts"].extra == "piper"
+    assert modules["tts"].install == (
+        f"huri-module-tts[piper] @ {repo}#subdirectory=packages/huri-module-tts"
+    )
+    assert modules["servo"].install == (
+        "huri-module-servo[gpio] @ git+https://github.com/acme/huri-module-servo@0.1.0"
+    )
+    assert modules["stt"].extra is None
+
+
+LIB_PYPROJECT = """
 [project]
-name = "huri-module-tts-piper"
+name = "huri-module-foo"
 dependencies = [
   "huri-core[server]>=0.4.0.dev0,<0.5",
   "huri-events>=0.1,<0.2",
-  "huri-tts>=0.1,<0.2",
-  "piper-tts>=1.3",
+  "huri-foo-lib>=0.1,<0.2",
+  "numpy>=1.26",
 ]
 """
-TTS_PYPROJECT = """
+LIB_LIB_PYPROJECT = """
 [project]
-name = "huri-tts"
+name = "huri-foo-lib"
 dependencies = ["huri-core>=0.4.0.dev0,<0.5", "huri-events>=0.1,<0.2"]
 """
-TTS_ENTRY = """
+FOO_ENTRY = """
 [[module]]
-name = "tts"
-package = "huri-module-tts-piper"
+name = "foo"
+package = "huri-module-foo"
 huri_core = ">=0.4.0.dev0,<0.5"
 verified = 2026-10-12
-source = { path = "packages/huri-module-tts-piper" }
+source = { path = "packages/huri-module-foo" }
 """
 
 
@@ -464,24 +515,26 @@ def test_install_stt_brings_huri_events_from_huri_modules_at_the_same_ref(
 
 
 def test_a_curated_module_brings_the_curated_libraries_it_depends_on(capsys, checkout):
-    (checkout / "registry.toml").write_text(REGISTRY_TEXT + TTS_ENTRY)
+    # No curated library is left today (huri-module-tts folds its own in); a
+    # module that depends on one still gets it from huri-modules.
+    (checkout / "registry.toml").write_text(REGISTRY_TEXT + FOO_ENTRY)
     packages = checkout / "packages"
     for name, pyproject in [
-        ("huri-module-tts-piper", PIPER_PYPROJECT),
-        ("huri-tts", TTS_PYPROJECT),
+        ("huri-module-foo", LIB_PYPROJECT),
+        ("huri-foo-lib", LIB_LIB_PYPROJECT),
     ]:
         (packages / name).mkdir()
         (packages / name / "pyproject.toml").write_text(pyproject)
     code, out = run(
-        ["install", "tts", "--dry-run", "--registry", str(checkout)], capsys
+        ["install", "foo", "--dry-run", "--registry", str(checkout)], capsys
     )
     assert code == 0
-    piper, events, tts = (
-        packages / "huri-module-tts-piper",
+    foo, events, lib = (
+        packages / "huri-module-foo",
         packages / "huri-events",
-        packages / "huri-tts",
+        packages / "huri-foo-lib",
     )
-    assert f"pip install {piper} {events} {tts}\n" in out
+    assert f"pip install {foo} {events} {lib}\n" in out
 
 
 def test_a_verified_third_party_module_also_gets_the_curated_events(
@@ -560,6 +613,19 @@ def test_another_registry_url_names_the_ref_curated_packages_come_from(capsys):
             'name = "stt"\nverified = 2026-10-12\nsource = { path = "packages/x" }',
             "registry entry 'stt': listed twice",
         ),
+        (
+            'name = "typo"\nextras = "piper"\nsource = { path = "packages/x" }',
+            "registry entry 'typo': unknown key(s) ['extras']",
+        ),
+        (
+            'name = "upper"\npackage = "x"\nextra = "Piper"\n'
+            'source = { path = "packages/x" }',
+            "'upper': `extra` must be the name of an extra of its package",
+        ),
+        (
+            'name = "nopackage"\nextra = "piper"\nsource = { path = "packages/x" }',
+            "'nopackage': `package` must be a non-empty string",
+        ),
     ],
 )
 def test_a_malformed_registry_entry_is_a_readable_error(capsys, tmp_path, entry, error):
@@ -602,18 +668,22 @@ def test_a_malformed_events_entry_is_a_readable_error(capsys, tmp_path, entry, e
 
 def test_a_registry_without_schema_is_read_as_this_one():
     # Lenient for `huri hub`; huri-modules' CI requires the key.
-    text = REGISTRY_TEXT.replace("schema = 1\n", "")
+    text = REGISTRY_TEXT.replace("schema = 2\n", "")
     assert "schema" not in text
     assert reg.parse(text, "r.toml")["module"][0]["name"] == "stt"
     with pytest.raises(web.HubError, match="missing `schema`"):
         reg.parse(text, "r.toml", require_schema=True)
 
 
-def test_a_newer_registry_schema_is_a_readable_error(capsys, tmp_path):
-    (tmp_path / "registry.toml").write_text("schema = 2\n")
+@pytest.mark.parametrize("schema", [1, 3])
+def test_another_registry_schema_is_a_readable_error(capsys, tmp_path, schema):
+    # Schema 1 had no `extra`: this huri-hub would install its modules without
+    # their engine, so it does not read it either; schema 3 is a newer hub's.
+    (tmp_path / "registry.toml").write_text(f"schema = {schema}\n")
     argv = ["list", "--registry", str(tmp_path / "registry.toml")]
     assert cli.main(argv, fetch=fetch) == 1
-    assert "registry schema 2" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert f"registry schema {schema}; this huri-hub reads schema 2" in err
 
 
 def test_list_and_install_name_the_registry_they_read(capsys, registry):

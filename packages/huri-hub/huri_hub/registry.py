@@ -6,7 +6,7 @@ file with these same functions, adding only the checks that need the
 repository itself (packages on disk, submodules, the modules' own tests). A new
 key of the registry is a change here, released with huri-hub.
 
-    schema = 1
+    schema = 2
 
     [[events]]                      # a curated event package
     package = "huri-events"
@@ -24,6 +24,13 @@ key of the registry is a change here, released with huri-hub.
     # source = { git = "https://github.com/acme/huri-module-servo",
     #            tag = "0.1.0", submodule = "modules/servo" }
     #            (optional: subdirectory = "<dir in that repository>")
+    extra = "cosyvoice"   # optional: the extra of `package` the module needs,
+                          # installed as `<package>[<extra>] @ <source>`
+
+Schema 2 added `extra`, and refuses a module entry key it does not know: an
+older huri-hub would have ignored `extra` and installed a module without its
+engine, so it reads no schema-2 registry (it says to upgrade instead), and a
+key added later cannot be ignored silently either.
 """
 
 import datetime as dt
@@ -45,7 +52,11 @@ REGISTRY_PATH = "registry.toml"
 # What makes a directory a huri-modules checkout, besides its registry.
 CHECKOUT_MARKER = "check_registry.py"
 # The registry schema this huri-hub reads.
-SCHEMA = 1
+SCHEMA = 2
+# The keys of a [[module]] entry; any other is refused.
+MODULE_KEYS = {"name", "package", "summary", "huri_core", "verified", "source", "extra"}
+# An extra's name (PEP 685: normalized names are what pip compares).
+_EXTRA = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 # The `source` of a registry entry: kind -> (required keys, optional keys).
 SOURCE_KEYS = {
     "path": ({"path"}, set()),
@@ -97,6 +108,8 @@ class HubModule:
     verified: bool
     # A curated package of huri-modules: its directory there ("packages/...").
     curated_path: Optional[str] = None
+    # The extra of its package the module needs (registry `extra`), if any.
+    extra: Optional[str] = None
 
     def supports(self, core_version: str) -> Optional[bool]:
         """Whether this module supports that huri-core; None if unknown."""
@@ -179,11 +192,11 @@ def check_events_entry(index: int, entry: Any) -> str:
 
 
 def check_module_entry(index: int, entry: Any, seen: Optional[Set[str]] = None) -> str:
-    """The name of the `index`-th (from 0) [[module]] entry, once its name,
-    huri_core range and `verified` date are checked (its source is
-    check_source's); HubError when one is malformed. With `seen`, the names of
-    the entries before it: its name is added there, and is an error if it is
-    already (a module is listed once)."""
+    """The name of the `index`-th (from 0) [[module]] entry, once its keys,
+    name, huri_core range, `verified` date and `extra` are checked (its source
+    is check_source's); HubError when one is malformed. With `seen`, the names
+    of the entries before it: its name is added there, and is an error if it
+    is already (a module is listed once)."""
     name = entry.get("name") if isinstance(entry, dict) else None
     if not isinstance(name, str) or not name:
         raise HubError(f"registry module #{index + 1} has no `name`")
@@ -192,6 +205,18 @@ def check_module_entry(index: int, entry: Any, seen: Optional[Set[str]] = None) 
         if name in seen:
             raise HubError(f"{where}: listed twice")
         seen.add(name)
+    unknown = sorted(set(entry) - MODULE_KEYS)
+    if unknown:
+        raise HubError(f"{where}: unknown key(s) {unknown}")
+    if "extra" in entry:
+        extra = entry["extra"]
+        if not isinstance(extra, str) or not _EXTRA.match(extra):
+            raise HubError(
+                f"{where}: `extra` must be the name of an extra of its package "
+                f'(lowercase, e.g. "cosyvoice"), not {extra!r}'
+            )
+        # The install target names the package: `<package>[<extra>] @ ...`.
+        _check_string(where, entry, "package")
     huri_core = entry.get("huri_core")
     if huri_core is not None:
         try:
@@ -253,8 +278,8 @@ class Registry:
         command, so pip never looks them up anywhere else (an index would let
         anyone publish a package of that name). Always the event packages
         ([[events]]); for a curated module also the other curated libraries it
-        depends on (e.g. huri-tts), read from its pyproject.toml: a curated
-        library is the directory packages/<its distribution name>.
+        depends on, read from its pyproject.toml: a curated library is the
+        directory packages/<its distribution name>.
         """
         paths = list(self.events)
         if module.curated_path is not None:
@@ -299,7 +324,11 @@ def _curated_dependencies(path: str, registry: Registry, fetch: Fetch) -> List[s
 
 
 def _install_target(
-    name: str, source: Mapping[str, Any], checkout: Optional[Path], ref: str
+    name: str,
+    source: Mapping[str, Any],
+    checkout: Optional[Path],
+    ref: str,
+    extra: Optional[Tuple[str, str]] = None,
 ) -> Tuple[str, str]:
     """(pip target, where it comes from) of a registry entry's `source`.
 
@@ -310,18 +339,27 @@ def _install_target(
         third-party module, always installed at the reviewed tag. Its pinned
         submodule (`submodule = "modules/<name>"`) is for huri-modules' own CI
         and review, not needed here.
+
+    `extra` = (package, extra): the module needs that extra of its package,
+    named in the target: `<dir>[<extra>]` for a directory, otherwise
+    `<package>[<extra>] @ <url>`.
     """
 
     kind = check_source(f"registry entry {name!r}", source)
     if kind == "path":
         path = str(source["path"])
         if checkout is not None and (checkout / path).is_dir():
-            return str(checkout / path), path
-        return curated_install(path, ref), path
-    target = f"git+{source['git']}@{source['tag']}"
-    if source.get("subdirectory"):
-        target += f"#subdirectory={source['subdirectory']}"
-    return target, f"{source['git']}@{source['tag']}"
+            local = str(checkout / path)
+            return (f"{local}[{extra[1]}]" if extra else local), path
+        url, where = curated_install(path, ref), path
+    else:
+        url = f"git+{source['git']}@{source['tag']}"
+        if source.get("subdirectory"):
+            url += f"#subdirectory={source['subdirectory']}"
+        where = f"{source['git']}@{source['tag']}"
+    if extra:
+        return f"{extra[0]}[{extra[1]}] @ {url}", where
+    return url, where
 
 
 def _curated_ref(location: str, is_url: bool, local: bool, warn: Warn) -> str:
@@ -378,7 +416,10 @@ def read_registry(
     for i, entry in enumerate(registry.get("module", [])):
         name = check_module_entry(i, entry, names)
         source = entry.get("source", {})
-        install, where = _install_target(name, source, checkout, ref)
+        extra = entry.get("extra")
+        install, where = _install_target(
+            name, source, checkout, ref, (entry["package"], extra) if extra else None
+        )
         modules.append(
             HubModule(
                 name=name,
@@ -388,6 +429,7 @@ def read_registry(
                 install=install,
                 verified=True,
                 curated_path=str(source["path"]) if "path" in source else None,
+                extra=extra,
             )
         )
     return Registry(location, ref, checkout, modules, events)

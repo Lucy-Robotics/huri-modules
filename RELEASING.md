@@ -29,7 +29,11 @@ package):
   bump, in the same pull request and release as the registry that needs it: a
   minor bump while `0.x` when an older huri-hub cannot read the new registry
   (`huri hub` then tells its users to upgrade huri-hub or pin
-  `HURI_MODULES_REF` to an older release), a patch otherwise.
+  `HURI_MODULES_REF` to an older release), a patch otherwise. A new key an
+  older huri-hub would ignore, installing something incomplete, is a new
+  `schema` number, so that huri-hub refuses the registry instead (schema 2,
+  huri-hub 0.2.0: the module key `extra`, without which an older huri-hub
+  installed a TTS module without its engine).
   huri-hub needs a huri-core whose `huri` runs the `huri.commands` entry
   points (the first `0.4.0` tag has it): an older core runs its own built-in
   `huri hub` instead. `HURI_CORE_REF` must point at such a core, or

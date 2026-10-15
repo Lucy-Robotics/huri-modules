@@ -36,7 +36,10 @@ def test_curated_modules_install_from_this_repository_at_one_ref(monkeypatch):
     modules = remote(REGISTRY.read_text(), monkeypatch, ref="0.1.0")
     for entry in ENTRIES:
         path = entry["source"]["path"]
-        assert modules[entry["name"]].install == f"{REPO}@0.1.0#subdirectory={path}"
+        target = f"{REPO}@0.1.0#subdirectory={path}"
+        if "extra" in entry:
+            target = f"{entry['package']}[{entry['extra']}] @ {target}"
+        assert modules[entry["name"]].install == target
 
 
 def test_a_checkout_installs_its_own_packages():

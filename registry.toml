@@ -12,11 +12,17 @@
 #       installed as git+<git>@<tag> (optional key: subdirectory = "<dir>",
 #       appended as #subdirectory=<dir>)
 #
+# `extra` (optional) is the extra of `package` the module needs, when the
+# package's base install lacks it (one package, several engines: each module
+# brings its own stack). `huri hub` installs "<package>[<extra>] @ <source>";
+# check_registry.py checks it against the package's [tool.huri-modules.extras].
+#
 # The schema has one reader, huri-hub's (packages/huri-hub/huri_hub/registry.py),
 # which both `huri hub` and check_registry.py use: a new key is a change there,
-# released with a huri-hub version bump (RELEASING.md).
+# released with a huri-hub version bump (RELEASING.md). Schema 2 (huri-hub
+# >= 0.2) added `extra`: an older huri-hub would install a module without it.
 
-schema = 1
+schema = 2
 
 [[events]]
 package = "huri-events"

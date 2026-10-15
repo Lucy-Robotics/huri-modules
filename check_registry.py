@@ -7,9 +7,11 @@
 For each listed module: its package is where `source` says, provides the module
 under that name, ships a manifest that agrees with the entry, passes HuRI's
 startup compatibility checks against the installed huri-core and events, and
-only produces topics of an event package it declares. Every curated module
-(packages/huri-module-*) must be listed. --run-tests also runs each listed
-package's own tests (huri_core.testing, no Ray needed).
+only produces topics of an event package it declares, and names in `extra` the
+extra its package maps it to ([tool.huri-modules.extras], an extra of its
+[project.optional-dependencies]), or none when the package maps it to none.
+Every curated module (packages/huri-module-*) must be listed. --run-tests also
+runs each listed package's own tests (huri_core.testing, no Ray needed).
 
 The registry's schema is huri-hub's (huri_hub.registry, what `huri hub` reads
 it with): this checks every entry with it, then what needs this repository. A
@@ -83,6 +85,15 @@ def _pyproject(path: Path) -> Dict[str, Any]:
         "project"
     ]
     return project
+
+
+def _module_extras(path: Path) -> Dict[str, str]:
+    """[tool.huri-modules.extras] of a package: module -> the extra it needs."""
+    pyproject = tomllib.loads((path / "pyproject.toml").read_text())
+    extras: Dict[str, str] = (
+        pyproject.get("tool", {}).get("huri-modules", {}).get("extras", {})
+    )
+    return extras
 
 
 def _norm(name: str) -> str:
@@ -298,6 +309,19 @@ def check(
         if name not in provided:
             problems.append(f"{where}: {project['name']} provides {sorted(provided)}")
             continue
+        extra = _module_extras(source).get(name)
+        if entry.get("extra") != extra:
+            problems.append(
+                f"{where}: registry extra {entry.get('extra')!r} differs from "
+                f"{project['name']}'s [tool.huri-modules.extras] {extra!r}"
+            )
+        elif extra is not None and extra not in project.get(
+            "optional-dependencies", {}
+        ):
+            problems.append(
+                f"{where}: {project['name']} has no extra {extra!r} in "
+                "[project.optional-dependencies]"
+            )
         try:
             manifest = find_manifest(name)
         except ManifestError as e:
