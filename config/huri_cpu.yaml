@@ -7,7 +7,7 @@
 # Run it with:
 #
 #   # 1. Start a local Ray head:
-#   ray start --head --num-cpus=8 --num-gpus=1
+#   ray start --head --num-cpus=8 --num-gpus=0
 #
 #   # 2. Deploy this config:
 #   serve deploy config/huri_cpu.yaml
@@ -17,13 +17,11 @@
 #   # 3. Tear down when done:
 #   serve shutdown -y && ray stop
 #
-# NOTE: The Helm chart uses GPU_TYPE_NVIDIA / GPU_TYPE_AMD custom resources to
-# pin deployments to vendor-specific worker groups / container images. On a
-# single local machine there is only one environment, so those are dropped and
-# scheduling is done purely with num_gpus fractions.
+# CPU only: every deployment below has num_gpus 0, so no GPU is needed. For
+# GPU placement and the env vars that go with it, see config/huri.yaml.
 #
 # Likewise there are no PVC volume mounts here, so the model-path /
-# voice-sample / GPU env vars the chart injects from .Values.models,
+# voice-sample env vars the chart injects from .Values.models,
 # .Values.voiceAssets and workerGroups[*].containerEnv are folded into
 # runtime_env.env_vars below. Relative paths resolve against the directory
 # `ray start` / `serve run` is launched from: run them from the repository root
@@ -50,10 +48,6 @@ applications:
         # --- Gesture sliding-window defaults (run in the HuRI CPU actor) ---
         HURI_GESTURE_CONTEXT_SEC: "2.0"
         HURI_GESTURE_MIN_CHUNK_SEC: "0.5"
-        # Caps the EMAGE process to a fraction of GPU memory so TTS keeps the
-        # rest. "0" disables the cap. Keep roughly in line with MOVHandle
-        # num_gpus below. (Helm sets this on the nvidia worker's containerEnv.)
-        HURI_GESTURE_GPU_MEM_FRACTION: "0.2"
 
         # --- TTS: Piper (module tts, deployment TTSHandle) ---
         # ONNX on CPU, ~30x faster than realtime; huri-module-tts[piper]. The
@@ -71,14 +65,11 @@ applications:
         # ./install.sh downloads it to.
         HURI_EMAGE_REPO: assets/models/emage/H-Liu1997/emage_audio
 
-        # --- GPU-vendor runtime env (Helm puts these on the worker containers) ---
-        NVIDIA_VISIBLE_DEVICES: "all"
-        NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
         HF_HUB_DOWNLOAD_TIMEOUT: "10"
 
     deployments:
       # HuRI: FastAPI/WebSocket ingress + per-session router. CPU only —
-      # all GPU work is offloaded to the handle-backed deployments below.
+      # all model work is offloaded to the handle-backed deployments below.
       - name: HuRI
         ray_actor_options:
           num_cpus: 1
@@ -114,15 +105,7 @@ applications:
           # Same default as ./install.sh; empty embedding_url uses llm_url.
           embedding_model: "bge-m3"
 
-      # GPU split (manual override knob): num_gpus are Ray *scheduling*
-      # fractions that let replicas pack onto the same device and bias the
-      # split. TTS gets the lion's share so streamed speech stays low-latency;
-      # gesture gets the remainder. To also cap gesture's actual VRAM, set
-      # HURI_GESTURE_GPU_MEM_FRACTION above.
-      #
-      # These fractions must sum to <= the --num-gpus you pass to `ray start`.
-      # As written STT(0.5) + TTS(0.8) + Gesture(0.2) = 1.5, so use
-      # --num-gpus=2 (e.g. two physical GPUs), or lower the fractions to fit 1.
+      # TTS (Piper) and gesture run on CPU here too.
       - name: TTSHandle
         ray_actor_options:
           num_cpus: 1

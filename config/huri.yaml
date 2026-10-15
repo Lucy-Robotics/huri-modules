@@ -132,8 +132,8 @@ applications:
       # HURI_GESTURE_GPU_MEM_FRACTION above.
       #
       # These fractions must sum to <= the --num-gpus you pass to `ray start`.
-      # As written STT(0.5) + TTS(0.8) + Gesture(0.2) = 1.5, so use
-      # --num-gpus=2 (e.g. two physical GPUs), or lower the fractions to fit 1.
+      # As written STT(0) + TTS(0.8) + Gesture(0.2) = 1.0, which fits the
+      # --num-gpus=1 above.
       - name: CosyVoiceTTSHandle
         ray_actor_options:
           num_cpus: 1
