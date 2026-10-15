@@ -1,6 +1,7 @@
 """scripts/module_requirements.py: per-module, per-hardware requirements."""
 
 import importlib.util
+import json
 import re
 import sys
 from pathlib import Path
@@ -68,17 +69,32 @@ def test_variant_follows_the_host():
     assert "transformers==4.46.3" in amd and "torch==" not in amd
 
 
-def write_package(root, name, modules, deps=(), variants=None):
+def write_package(
+    root, name, modules, deps=(), variants=None, optional=None, extras=None
+):
+    """A package under root/packages. `variants` maps "nvidia" (whole package)
+    or "nvidia.<module>" (one module) to a pin file's text; `optional` an extra
+    to its dependencies, `extras` a module to its extra."""
     path = root / "packages" / name
     path.mkdir(parents=True)
     eps = "\n".join(f'{m} = "x:Y"' for m in modules)
     dep_lines = "".join(f'  "{d}",\n' for d in deps)
-    (path / "pyproject.toml").write_text(
+    text = (
         f'[project]\nname = "{name}"\ndependencies = [\n{dep_lines}]\n\n'
         f'[project.entry-points."huri.modules"]\n{eps}\n'
     )
-    for variant, text in (variants or {}).items():
-        (path / f"requirements-{variant}.txt").write_text(text)
+    if optional:
+        text += "\n[project.optional-dependencies]\n" + "".join(
+            f"{extra} = {json.dumps(deps_)}\n" for extra, deps_ in optional.items()
+        )
+    if extras:
+        text += "\n[tool.huri-modules.extras]\n" + "".join(
+            f'{module} = "{extra}"\n' for module, extra in extras.items()
+        )
+    (path / "pyproject.toml").write_text(text)
+    for variant, pins in (variants or {}).items():
+        (path / f"requirements-{variant}.txt").write_text(pins)
+    return path
 
 
 def test_conflicting_pins_name_both_modules(tmp_path):
@@ -123,3 +139,85 @@ def test_parser_without_tomllib_reads_the_same(monkeypatch):
     monkeypatch.setitem(sys.modules, "tomllib", None)
     for name, package in expected.items():
         assert mr.read_pyproject(ROOT / "packages" / name) == package
+
+
+def names(lines):
+    return {canonicalize_name(mr.Requirement(line, "").name) for line in lines}
+
+
+def test_a_module_pin_file_applies_only_to_its_module(tmp_path):
+    write_package(
+        tmp_path,
+        "huri-module-a",
+        ["light", "heavy"],
+        variants={"nvidia": "numpy==1.26.4\n", "nvidia.heavy": "torch==2.3.1\n"},
+    )
+    assert names(merged("nvidia", ["light"], tmp_path)) == {"numpy"}
+    assert names(merged("nvidia", ["heavy"], tmp_path)) == {"numpy", "torch"}
+    assert merged("cpu", ["light", "heavy"], tmp_path) == []
+
+
+def test_conflicts_are_found_across_module_pin_files(tmp_path):
+    write_package(
+        tmp_path, "huri-module-a", ["a"], variants={"nvidia.a": "torch==2.3.1\n"}
+    )
+    write_package(
+        tmp_path, "huri-module-b", ["b", "c"], variants={"nvidia": "torch==2.8.0\n"}
+    )
+    with pytest.raises(
+        mr.ConflictError,
+        match=r"torch.*huri-module-a \(nvidia, a\).*huri-module-b \(nvidia\)",
+    ):
+        merged("nvidia", ["a", "c"], tmp_path)
+
+
+def test_two_extras_of_one_package_conflict_too(tmp_path):
+    write_package(
+        tmp_path,
+        "huri-module-a",
+        ["x", "y"],
+        optional={"ex": ["onnxruntime==1.18.0"], "ey": ["onnxruntime==1.20.0"]},
+        extras={"x": "ex", "y": "ey"},
+    )
+    assert names(merged("cpu", ["x"], tmp_path)) == {"onnxruntime"}
+    with pytest.raises(mr.ConflictError, match=r"huri-module-a\[ex\].*\[ey\]"):
+        merged("cpu", ["x", "y"], tmp_path)
+
+
+def test_a_module_pin_file_for_no_module_is_refused(tmp_path):
+    write_package(
+        tmp_path, "huri-module-a", ["a"], variants={"nvidia.typo": "torch==2.3.1\n"}
+    )
+    with pytest.raises(mr.ConflictError, match=r"requirements-nvidia.typo.txt"):
+        merged("nvidia", ["a"], tmp_path)
+
+
+@pytest.mark.parametrize(
+    "extras,fragment",
+    [
+        ({"a": "nope"}, "needs extra 'nope'"),
+        ({"b": "ex"}, "names 'b', not one of its modules"),
+    ],
+)
+def test_a_module_extra_must_exist(tmp_path, extras, fragment):
+    write_package(
+        tmp_path, "huri-module-a", ["a"], optional={"ex": ["x"]}, extras=extras
+    )
+    with pytest.raises(mr.ConflictError, match=fragment):
+        mr.module_packages(tmp_path)
+
+
+def test_parser_without_tomllib_reads_extras(tmp_path, monkeypatch):
+    path = write_package(
+        tmp_path,
+        "huri-module-a",
+        ["a", "b"],
+        deps=["numpy>=1.26"],
+        optional={"ex": ["piper-tts>=1.8,<1.9", "x"], "ey": ["torch"]},
+        extras={"a": "ex", "b": "ey"},
+    )
+    expected = mr.read_pyproject(path)
+    assert expected.extras == {"a": "ex", "b": "ey"}
+    assert expected.optional["ex"] == ["piper-tts>=1.8,<1.9", "x"]
+    monkeypatch.setitem(sys.modules, "tomllib", None)
+    assert mr.read_pyproject(path) == expected
