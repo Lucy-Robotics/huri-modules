@@ -1,9 +1,10 @@
 """The run scripts the installer writes into .huri-local/: env.sh carries the GPU
 environment start.sh used to set on its own, and stop.sh stops Ray only when
-start.sh started it.
+start.sh started it (otherwise it removes only huri-app).
 
 generate_run_scripts() is lifted out of scripts/install_local.sh and run against
-a temporary repo; ray and serve are fakes on PATH that log their arguments."""
+a temporary repo; ray, serve and python are fakes on PATH that log their
+arguments."""
 
 import os
 import shutil
@@ -37,6 +38,10 @@ echo "serve $*" >>"{log}"
 [ "$1" = status ] && echo "status: RUNNING"
 exit 0
 """
+FAKE_PYTHON = """#!/bin/sh
+echo "python $*" >>"{log}"
+"""
+DELETE_HURI_APP = 'serve.delete("huri-app")'
 
 
 def section(text, start, end):
@@ -93,7 +98,11 @@ def fakes(tmp_path):
     fake = tmp_path / "fake"
     fake.mkdir()
     log = tmp_path / "calls.log"
-    for name, body in (("ray", FAKE_RAY), ("serve", FAKE_SERVE)):
+    for name, body in (
+        ("ray", FAKE_RAY),
+        ("serve", FAKE_SERVE),
+        ("python", FAKE_PYTHON),
+    ):
         exe = fake / name
         exe.write_text(body.format(log=log, fake=fake))
         exe.chmod(0o755)
@@ -160,23 +169,32 @@ def test_stop_stops_the_ray_head_start_started(tmp_path, fakes):
     assert (state / "ray.owned").exists()
 
     out = run(state / "stop.sh", env)
+    assert "serve shutdown -y" in calls(log)
     assert "ray stop" in calls(log)
     assert not (state / "ray.owned").exists()
     assert "stopping the ray head" in out.stdout
+
+
+def assert_left_running(log, out):
+    """stop.sh removed huri-app alone and said how to apply env changes."""
+    assert "ray stop" not in calls(log)
+    assert "serve shutdown -y" not in calls(log)
+    assert any(DELETE_HURI_APP in c for c in calls(log))
+    assert "leaving ray running" in out.stdout
+    assert "run `ray stop` yourself" in out.stdout
 
 
 def test_stop_leaves_a_ray_it_did_not_start_running(tmp_path, fakes):
     fake, log, env = fakes
     (fake / "ray.up").touch()  # someone else's cluster
     state = generate(tmp_path)
-    run(state / "start.sh", env)
+    out = run(state / "start.sh", env)
     assert not [c for c in calls(log) if c.startswith("ray start")]
     assert not (state / "ray.owned").exists()
+    assert "reusing it" in out.stdout
 
     out = run(state / "stop.sh", env)
-    assert "ray stop" not in calls(log)
-    assert "serve shutdown -y" in calls(log)
-    assert "leaving it running" in out.stdout
+    assert_left_running(log, out)
 
 
 def test_stop_leaves_a_later_ray_session_running(tmp_path, fakes):
@@ -191,6 +209,20 @@ def test_stop_leaves_a_later_ray_session_running(tmp_path, fakes):
     (ray_dir / "session_latest").symlink_to(ray_dir / "session_theirs")
 
     out = run(state / "stop.sh", env)
-    assert "ray stop" not in calls(log)
-    assert "leaving it running" in out.stdout
+    assert_left_running(log, out)
+    assert not (state / "ray.owned").exists()
+
+
+def test_stop_leaves_ray_running_when_start_could_not_record_the_session(
+    tmp_path, fakes
+):
+    # An empty record cannot tell start.sh's head from a later one.
+    fake, log, env = fakes
+    state = generate(tmp_path)
+    run(state / "start.sh", env)
+    (state / "ray.owned").write_text("")
+
+    out = run(state / "stop.sh", env)
+    assert_left_running(log, out)
+    assert "could not record" in out.stdout
     assert not (state / "ray.owned").exists()

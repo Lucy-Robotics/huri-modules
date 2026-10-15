@@ -2488,7 +2488,8 @@ source "$STATE_DIR/env.sh"
 
 # Secrets are exported *before* ray start so every Serve replica inherits them
 # (rag.py reads HURI_LLM_API_KEY). A cluster already running keeps its old env —
-# run stop.sh first after changing the key.
+# run stop.sh first after changing the key or the GPU variables (and \`ray stop\`
+# if stop.sh left Ray running).
 # shellcheck disable=SC1091
 [ -r "$STATE_DIR/secrets.env" ] && source "$STATE_DIR/secrets.env"
 EOF
@@ -2571,8 +2572,12 @@ if ! ray status >/dev/null 2>&1; then
   echo "[huri] starting ray head"
   ray start --head --num-cpus=$CPU_CORES --num-gpus=$P_RAY_GPUS \\
     --dashboard-host=127.0.0.1 --disable-usage-stats
+  # An empty record (the session link was unreadable) makes stop.sh leave Ray
+  # running: it cannot tell this head from one someone else starts later.
   readlink -f "\${RAY_TMPDIR:-/tmp}/ray/session_latest" >"$STATE_DIR/ray.owned" 2>/dev/null \\
     || : >"$STATE_DIR/ray.owned"
+else
+  echo "[huri] a ray head is already running; reusing it and the environment it started with"
 fi
 
 # --- 4. HuRI ----------------------------------------------------------------
@@ -2619,21 +2624,36 @@ EOF
 set -Euo pipefail
 cd "$REPO_ROOT"
 source "$STATE_DIR/env.sh"
-serve shutdown -y >/dev/null 2>&1 || true
-# Stop Ray only if start.sh started this very session (see ray.owned there).
+
+# On a Ray cluster start.sh did not start, remove only HuRI's application:
+# \`serve shutdown\` would delete every application on it, someone else's too.
+# Ray 2.55's serve CLI has no delete command, hence the Python API.
+leave_ray_running() {
+  echo "[huri] \$1; removing only huri-app and leaving ray running"
+  python -c 'import ray; from ray import serve; ray.init(address="auto", logging_level="ERROR"); serve.delete("huri-app")' \\
+    >/dev/null 2>&1 || true
+  echo '[huri] env changes (API key, GPU vars) only reach replicas after a fresh Ray head;'
+  echo '[huri] run \`ray stop\` yourself if nothing else uses this cluster.'
+}
+
+# Stop Serve and Ray only if start.sh started this very session (see ray.owned
+# there). An empty record cannot tell that session from a later one: keep Ray.
 owned="$STATE_DIR/ray.owned"
 if [ -e "\$owned" ]; then
   started="\$(cat "\$owned" 2>/dev/null || true)"
   current="\$(readlink -f "\${RAY_TMPDIR:-/tmp}/ray/session_latest" 2>/dev/null || true)"
-  if [ -z "\$started" ] || [ "\$started" = "\$current" ]; then
+  if [ -z "\$started" ]; then
+    leave_ray_running "start.sh could not record which ray session it started"
+  elif [ "\$started" = "\$current" ]; then
     echo "[huri] stopping the ray head start.sh started"
+    serve shutdown -y >/dev/null 2>&1 || true
     ray stop >/dev/null 2>&1 || true
   else
-    echo "[huri] ray is not the session start.sh started; leaving it running"
+    leave_ray_running "ray is not the session start.sh started"
   fi
   rm -f "\$owned"
 else
-  echo "[huri] start.sh did not start ray; leaving it running"
+  leave_ray_running "start.sh did not start ray"
 fi
 if [ "\${1:-}" = "--all" ]; then
   # Only stop what start.sh itself started. The previous version ran
