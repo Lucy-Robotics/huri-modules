@@ -22,6 +22,14 @@ package):
   bump too; a fix that keeps the wire format is a patch.
 - a module: a change to its topics, events, manifest or `user_config` keys is
   a minor bump while `0.x`; anything else that changes behaviour is a patch.
+- `huri-hub` (`huri hub`) is versioned like the others, and holds the one
+  reader of `registry.toml`'s schema (`huri_hub/registry.py`, which
+  `check_registry.py` uses too). A change of that schema (a new key, a new
+  `source` kind, a new `schema` number) is a change to huri-hub and its version
+  bump, in the same pull request and release as the registry that needs it: a
+  minor bump while `0.x` when an older huri-hub cannot read the new registry
+  (`huri hub` then tells its users to upgrade huri-hub or pin
+  `HURI_MODULES_REF` to an older release), a patch otherwise.
 
 Packages pin huri-core with a range of one minor version: today
 `huri-core>=0.4.0.dev0,<0.5` (in each `pyproject.toml`, `huri_module.toml` and

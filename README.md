@@ -14,6 +14,9 @@ It holds everything around the framework that you need to run it:
 - [`registry.toml`](registry.toml), the "verified" index (tier 3) of curated and
   reviewed third-party modules, its CI check [`check_registry.py`](check_registry.py)
   and the listing criteria, [`ACCEPTANCE.md`](ACCEPTANCE.md);
+- [`huri-hub`](packages/huri-hub), the `huri hub` command that finds and
+  installs modules from that registry and the community (see
+  [Finding modules](#finding-modules-huri-hub));
 - the installer ([`install.sh`](install.sh)), the Docker images ([`deploy/`](deploy)),
   the Helm chart ([`helm/`](helm)) and the shipped configs ([`config/`](config));
 - [`huri-cli`](examples/cli), the reference command-line client.
@@ -146,6 +149,7 @@ rejected with a `session_error` naming both sets.
 | [`huri-module-tts-piper`](packages/huri-module-tts-piper) | `tts` | the default TTS engine: Piper (ONNX, any CPU) |
 | [`huri-module-tts-cosyvoice`](packages/huri-module-tts-cosyvoice) | `tts_cosyvoice` | voice-cloning TTS (CosyVoice3, NVIDIA); wire it instead of `tts` |
 | [`huri-tts`](packages/huri-tts) | — | `StreamingTTS`, the engine-agnostic half both TTS modules share (a library) |
+| [`huri-hub`](packages/huri-hub) | — | `huri hub`: finds and installs modules (a tool, not in the registry; it reads it) |
 
 Each has its own `pyproject.toml` (and version), `huri_module.toml` manifest(s),
 tests and, for GPU modules, `requirements-{nvidia,amd}.txt`. Without a checkout,
@@ -164,8 +168,9 @@ pip install \
 ```
 
 The TTS modules also need `huri-tts` (`#subdirectory=packages/huri-tts`); each
-package's README has its full command. `huri hub install stt`, from an
-installed huri-core, does the same for any module of the registry: it installs
+package's README has its full command. `huri hub install stt` (the
+[`huri-hub`](#finding-modules-huri-hub) package) does the same for any module
+of the registry: it installs
 the module with huri-events (and huri-tts for a TTS module) from git, in one
 pip command, at the huri-modules ref it reads the registry from.
 
@@ -472,8 +477,10 @@ See [`packages/huri-module-stt/tests/test_stt.py`](packages/huri-module-stt/test
   [the table above](#the-curated-modules))
 - **modules/** — verified third-party modules, as git submodules pinned at a
   tag (see [modules/README.md](modules/README.md))
+- **packages/huri-hub** — `huri hub`, which finds and installs modules, and the
+  one reader of the registry's schema
 - **registry.toml**, **check_registry.py**, **ACCEPTANCE.md** — the verified
-  index, its CI check and the listing criteria
+  index, its CI check (with huri-hub's reader) and the listing criteria
 - **HURI_CORE_REF** — the huri-core ref this repository is built and tested
   against; **RELEASING.md** — versions and releases
 - **install.sh**, **scripts/** — the local installer (`install_local.sh`), the
@@ -564,17 +571,43 @@ huri hub install stt                # pip-installs a verified module; never enab
 huri hub install servo --community  # an unreviewed one: only when asked explicitly
 ```
 
-`huri` is huri-core's command (it needs `huri-core[client]`). It reads this
-repository's `registry.toml` — from `--registry PATH|URL`, `HURI_REGISTRY`, the
-huri-modules checkout you are in, or else GitHub at the ref `HURI_MODULES_REF`
-(a huri-modules release tag; `main` when unset) — and installs curated modules
-from this repository at that same ref
+The command comes from [`huri-hub`](packages/huri-hub), a light package of this
+repository (huri-core's base install and `packaging`: no Ray, no torch).
+`huri` is huri-core's command, which runs what installed packages register in
+its `huri.commands` entry point group; `huri-hub ...` and
+`python -m huri_hub ...` are the same command without it. `./install.sh`
+installs it (not the Docker images: a pod runs the modules of its image);
+otherwise, from git:
+
+```sh
+ref=0.1.0   # a huri-modules release tag
+core=0.4.0  # the huri-core ref in that release's HURI_CORE_REF file
+pip install \
+  "huri-core @ git+https://github.com/Lucy-Robotics/huri-core.git@$core" \
+  "huri-hub @ git+https://github.com/Lucy-Robotics/huri-modules.git@$ref#subdirectory=packages/huri-hub"
+```
+
+It reads this repository's `registry.toml` from, in order:
+
+- `--registry PATH|URL|CHECKOUT` (`list` and `install`);
+- `HURI_REGISTRY`, a path or URL;
+- the huri-modules checkout the current directory is in;
+- else GitHub, at the huri-modules ref `HURI_MODULES_REF` (a release tag of
+  this repository; `main` when unset).
+
+It installs curated modules from this repository at that same ref
 (`git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=packages/<name>`),
-verified third-party ones at their pinned tag. Community modules are read from
-their `pyproject.toml` and `huri_module.toml` on GitHub without installing them,
-and listed when their manifest supports the huri-core version. Nothing found is
-ever loaded: enabling a module stays the server operator's `HURI_MODULES`
-decision. `GITHUB_TOKEN` raises GitHub's rate limit.
+or from the checkout it read, with the curated packages they need
+(huri-events, huri-tts) in the same pip command; verified third-party ones at
+their pinned tag. A module whose `huri_core` range excludes the installed
+huri-core is refused rather than letting pip replace huri-core. Community
+modules are read from their `pyproject.toml` and `huri_module.toml` on GitHub
+without installing them, and listed when their manifest supports the huri-core
+version. Nothing found is ever loaded: enabling a module stays the server
+operator's `HURI_MODULES` decision. `GITHUB_TOKEN` raises GitHub's rate limit.
+
+`huri_hub.registry` is the one reader of the registry schema: `check_registry.py`
+checks the real file with it, so what CI accepts is what `huri hub` reads.
 
 ## The registry: listing a module
 

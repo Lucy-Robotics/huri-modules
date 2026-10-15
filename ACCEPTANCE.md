@@ -15,6 +15,9 @@ see README.md, "Adding a verified third-party module").
 
 CI (`check_registry.py --run-tests --strict`) checks the mechanical part:
 
+- the entry is well-formed for `huri hub`: `check_registry.py` reads the
+  registry with huri-hub's own reader (`huri_hub.registry`), so CI accepts only
+  what `huri hub` can read and install;
 - a third-party submodule is registered in `.gitmodules` with the entry's
   `git` URL, and is checked out at the commit the entry's `tag` names in that
   repository (read with `git ls-remote`): the commit reviewed and tested here
