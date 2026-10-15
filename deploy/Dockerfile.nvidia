@@ -39,6 +39,8 @@ ENV PYTHONPATH="/app/cosyvoice:${PYTHONPATH:-}"
 # a copy the build user owns, since pip builds local projects in place; the
 # script fails the build if modules and events do not fit together.
 #   docker build --build-arg HURI_CORE_REF="$(cat HURI_CORE_REF)" ...
+# A branch name (dev) is cached with this layer: pass its commit instead, or
+# build with --no-cache (README.md, "Docker images").
 ARG HURI_CORE_REF=""
 COPY --chown=ray HURI_CORE_REF /tmp/huri-src/
 COPY --chown=ray packages /tmp/huri-src/packages

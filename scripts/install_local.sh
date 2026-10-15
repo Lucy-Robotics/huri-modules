@@ -47,9 +47,14 @@ LOG_FILE="$STATE_DIR/install.log"
 # --- huri-core: the framework this repository is built and tested against ----
 
 HURI_CORE_GIT="https://github.com/Lucy-Robotics/huri-core.git"
-# One line, a git ref of huri-core: a release tag ("0.4.0") on main, "dev" on dev.
+# One line, a git ref of huri-core: a release tag ("0.4.0") on main; on dev,
+# that tag or "dev" (see RELEASING.md).
 HURI_CORE_REF="${HURI_CORE_REF:-$(tr -d '[:space:]' <"$REPO_ROOT/HURI_CORE_REF" 2>/dev/null || true)}"
 HURI_CORE_PATH="${HURI_CORE_PATH:-}"
+# The commit HURI_CORE_REF names, resolved once by resolve_core_sha; empty when
+# it could not be resolved (offline), and then the ref name is installed.
+HURI_CORE_SHA=""
+HURI_CORE_RESOLVED=0
 
 # --- Pinned versions (kept in sync with deploy/) -----------------------------
 
@@ -654,12 +659,41 @@ detect_tools() {
   have ollama && HAS_OLLAMA=1 || HAS_OLLAMA=0
 }
 
+# The commit HURI_CORE_REF names in huri-core's repository, into HURI_CORE_SHA
+# (call it directly, not in a $(...) subshell, or the result is lost):
+# a moving ref (a branch, "dev") is installed at the commit it is at now, not at
+# a name pip would consider already installed. A tag resolves to the commit it
+# points to. Offline, HURI_CORE_SHA stays empty and the ref name is used.
+resolve_core_sha() {
+  ((HURI_CORE_RESOLVED)) && return 0
+  HURI_CORE_RESOLVED=1
+  if [[ "$HURI_CORE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+    HURI_CORE_SHA="$HURI_CORE_REF"; return 0
+  fi
+  have git || return 0
+  local refs
+  local timeout=()
+  have timeout && timeout=(timeout 30)
+  refs="$(GIT_TERMINAL_PROMPT=0 "${timeout[@]}" git ls-remote "$HURI_CORE_GIT" \
+    "refs/tags/$HURI_CORE_REF^{}" "refs/tags/$HURI_CORE_REF" \
+    "refs/heads/$HURI_CORE_REF" 2>/dev/null)" || return 0
+  # A tag wins over a branch of the same name, as git does; an annotated tag's
+  # peeled (^{}) line is the commit.
+  HURI_CORE_SHA="$(awk -v r="$HURI_CORE_REF" '
+    $2 == "refs/tags/" r "^{}" { peeled = $1 }
+    $2 == "refs/tags/" r       { tag = $1 }
+    $2 == "refs/heads/" r      { head = $1 }
+    END { print (peeled != "" ? peeled : (tag != "" ? tag : head)) }' <<<"$refs")"
+}
+
 # Where huri-core is installed from, for humans.
 core_source() {
   if [[ -n "$HURI_CORE_PATH" ]]; then
     printf 'editable from %s (HURI_CORE_PATH)\n' "$HURI_CORE_PATH"
   else
-    printf 'git ref %s of %s\n' "$HURI_CORE_REF" "${HURI_CORE_GIT%.git}"
+    resolve_core_sha
+    printf 'git ref %s%s of %s\n' "$HURI_CORE_REF" \
+      "${HURI_CORE_SHA:+ (${HURI_CORE_SHA:0:12})}" "${HURI_CORE_GIT%.git}"
   fi
 }
 
@@ -677,6 +711,7 @@ report_detection() {
       "${GPU_DRIVER:+, driver $GPU_DRIVER}"
   fi
   printf '    %-14s %s\n' "python" "${PY_BIN:-<none suitable>} ${PY_VERSION:+($PY_VERSION)}"
+  resolve_core_sha  # here, not in core_source's subshell, so the result sticks
   printf '    %-14s %s\n' "huri-core" "$(core_source)"
   compute_system_packages
   if [[ -n "$PKG_MGR" ]]; then
@@ -1480,11 +1515,19 @@ install_python_deps() {
   # tested against (HURI_CORE_REF), or a local checkout (HURI_CORE_PATH). The
   # extras' deps are already satisfied by the requirement files above; they
   # are kept so a mismatch between the two shows up here, as a resolver error.
+  [[ -n "$HURI_CORE_PATH" ]] || resolve_core_sha
   info "  huri-core ($(core_source))"
   if [[ -n "$HURI_CORE_PATH" ]]; then
     run "$PIP" install "${C[@]}" -e "${HURI_CORE_PATH}[server,client]"
   else
-    run "$PIP" install "${C[@]}" "huri-core[server,client] @ git+$HURI_CORE_GIT@$HURI_CORE_REF"
+    local core="huri-core[server,client] @ git+$HURI_CORE_GIT@${HURI_CORE_SHA:-$HURI_CORE_REF}"
+    # pip skips a git requirement whose version is already installed, and every
+    # commit of core's dev branch has the same version: --force-reinstall is
+    # what makes a re-run pick up the commit the ref is at now. --no-deps, or
+    # it would reinstall every dependency too (torch included); the second,
+    # plain pass resolves the extras' dependencies against what is installed.
+    run "$PIP" install "${C[@]}" --force-reinstall --no-deps "$core"
+    run "$PIP" install "${C[@]}" "$core"
   fi
   # The curated events and modules: one distribution each under packages/,
   # registering them through entry points, which is how the server finds them.

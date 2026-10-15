@@ -16,8 +16,9 @@
 # The repo is COPIED into a scratch directory per target first: a real install
 # writes .huri-local/ and config/*.generated.yaml, and running that against your
 # working tree would clobber the setup you are using. huri-core is installed
-# from git at the ref in HURI_CORE_REF, as on any machine (HURI_CORE_PATH is not
-# passed into the containers).
+# from git at the ref in the copy's HURI_CORE_REF file, as on any machine: the
+# HURI_CORE_PATH and HURI_CORE_REF environment variables are unset inside the
+# containers (distrobox would otherwise pass the host's through).
 #
 # GPU paths are deliberately not covered — containers here have no GPU, and the
 # GPU logic is what needs a human with the hardware in front of them.
@@ -115,11 +116,12 @@ run_in_box() { # run_in_box <target> <script>
   case "$RUNNER" in
     distrobox)
       distrobox create --name "$box" --image "$image" --yes >/dev/null 2>&1 || true
-      distrobox enter "$box" -- bash -lc "$script"
+      # distrobox passes the host environment through: drop the overrides.
+      distrobox enter "$box" -- env -u HURI_CORE_PATH -u HURI_CORE_REF bash -lc "$script"
       ;;
     docker|podman)
       "$RUNNER" run --rm -v "$WORK_BASE:$WORK_BASE" -w "$WORK_BASE" \
-        -e HOME="$WORK_BASE" "$image" bash -lc "$script"
+        -e HOME="$WORK_BASE" "$image" env -u HURI_CORE_PATH -u HURI_CORE_REF bash -lc "$script"
       ;;
   esac
 }
