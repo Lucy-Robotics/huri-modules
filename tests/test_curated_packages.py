@@ -43,7 +43,8 @@ def test_every_module_ships_a_matching_manifest(path):
 @pytest.mark.parametrize("path", PACKAGES, ids=lambda p: p.name)
 def test_dependencies_accept_the_repo_pins(path):
     repo_pins = pins()
-    for raw in project(path)["dependencies"]:
+    optional = project(path).get("optional-dependencies", {})
+    for raw in project(path)["dependencies"] + sum(optional.values(), []):
         req = Requirement(raw)
         pinned = repo_pins.get(canonicalize_name(req.name))
         if pinned and req.specifier:
@@ -68,3 +69,25 @@ def test_each_curated_module_lives_in_exactly_one_package():
         "tts",
         "tts_cosyvoice",
     }
+
+
+@pytest.mark.parametrize("path", PACKAGES, ids=lambda p: p.name)
+def test_module_extras_name_its_modules_and_extras(path):
+    """[tool.huri-modules.extras] (read by huri-modules' tooling): each key is
+    a module of the package, each value one of its extras."""
+    pyproject = tomllib.loads((path / "pyproject.toml").read_text())
+    extras = pyproject.get("tool", {}).get("huri-modules", {}).get("extras", {})
+    modules = project(path)["entry-points"]["huri.modules"]
+    optional = project(path).get("optional-dependencies", {})
+    for module, extra in extras.items():
+        assert module in modules, f"{path.name}: {module} is not one of its modules"
+        assert extra in optional, f"{path.name}: no extra {extra!r}"
+
+
+def test_tts_installs_no_engine_without_its_extra():
+    tts = ROOT / "packages" / "huri-module-tts"
+    base = {
+        canonicalize_name(Requirement(r).name) for r in project(tts)["dependencies"]
+    }
+    assert not {"piper-tts", "torch", "torchaudio", "onnxruntime"} & base
+    assert project(tts)["optional-dependencies"]["piper"] == ["piper-tts>=1.8,<1.9"]

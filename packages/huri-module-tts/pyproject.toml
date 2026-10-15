@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=64,<82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "huri-module-tts"
+version = "0.1.0"
+description = "HuRI modules: text to speech with Piper (CPU, any machine) or CosyVoice3 (voice cloning, NVIDIA GPU)"
+readme = "README.md"
+requires-python = ">=3.10"
+# The streaming logic both engines share. No engine library here: each comes
+# with its extra, so a host that runs one engine never installs the other's
+# stack (piper's onnxruntime and CosyVoice's onnxruntime-gpu do not mix).
+dependencies = [
+  "huri-core[server]>=0.4.0.dev0,<0.5",
+  "huri-events>=0.1,<0.2",
+  "numpy>=1.26,<2",
+]
+
+[project.optional-dependencies]
+piper = ["piper-tts>=1.8,<1.9"]
+# CosyVoice itself is not pip-installable (install_cosyvoice.sh); its hardware
+# pins are requirements-<variant>.tts_cosyvoice.txt.
+cosyvoice = ["torch", "torchaudio"]
+
+[project.entry-points."huri.modules"]
+tts = "huri_tts.piper.module:PiperTTS"
+tts_cosyvoice = "huri_tts.cosyvoice.module:CosyVoiceTTS"
+
+# The extra each module needs: read by huri-modules' tooling
+# (scripts/module_requirements.py, check_registry.py against registry.toml's
+# `extra`), not by huri-core.
+[tool.huri-modules.extras]
+tts = "piper"
+tts_cosyvoice = "cosyvoice"
+
+[tool.setuptools.packages.find]
+include = ["huri_tts*"]
+
+[tool.setuptools.package-data]
+huri_tts = ["manifests/*/huri_module.toml"]

@@ -127,9 +127,9 @@ def test_cli_exits_2_with_the_reason(tmp_path, capsys):
     assert "transformers==4.46.3" in out.read_text()
 
 
-def test_the_hub_and_the_libraries_are_not_modules():
+def test_the_hub_and_the_events_are_not_modules():
     providers = {package.distribution for package in mr.module_packages(ROOT).values()}
-    assert {"huri-hub", "huri-tts", "huri-events"}.isdisjoint(providers)
+    assert {"huri-hub", "huri-events"}.isdisjoint(providers)
     assert all(mr.INTERNAL.match(name) for name in ("huri-hub", "huri_hub"))
 
 
@@ -143,6 +143,32 @@ def test_parser_without_tomllib_reads_the_same(monkeypatch):
 
 def names(lines):
     return {canonicalize_name(mr.Requirement(line, "").name) for line in lines}
+
+
+@pytest.mark.parametrize("variant", mr.VARIANTS)
+def test_piper_never_gets_cosyvoice_s_stack(variant):
+    """One package, two engines: planning `tts` brings Piper (its extra) and
+    none of tts_cosyvoice's pins (its per-module files), and the reverse."""
+    piper = names(merged(variant, ["vad", "stt", "tts"]))
+    assert "piper-tts" in piper
+    assert not {"torch", "onnxruntime-gpu", "transformers", "lightning"} & piper
+    cosyvoice = merged(variant, ["tts_cosyvoice"])
+    assert "piper-tts" not in names(cosyvoice)
+    assert "torch" in names(cosyvoice)  # its extra
+    if variant == "nvidia":
+        assert any(line.startswith("onnxruntime-gpu==1.18.0") for line in cosyvoice)
+        assert any(line.startswith("torch==2.3.1") for line in cosyvoice)
+    if variant == "cpu":
+        assert any(line.startswith("onnxruntime==1.18.0") for line in cosyvoice)
+
+
+def test_origins_name_the_module_and_the_extra():
+    lines = merged("nvidia", ["tts_cosyvoice"])
+    torch = next(line for line in lines if line.startswith("torch=="))
+    assert "huri-module-tts (nvidia, tts_cosyvoice)" in torch
+    assert "huri-module-tts[cosyvoice]" in torch
+    piper = next(line for line in merged("cpu", ["tts"]) if "piper" in line)
+    assert piper.startswith("piper-tts>=1.8,<1.9") and "huri-module-tts[piper]" in piper
 
 
 def test_a_module_pin_file_applies_only_to_its_module(tmp_path):

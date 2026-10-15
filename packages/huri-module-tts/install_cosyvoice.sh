@@ -2,7 +2,7 @@
 # CosyVoice has no setup.py/pyproject.toml, so pip cannot install it, not even
 # from git. Clone it at the pinned commit and put it on PYTHONPATH instead:
 #
-#   packages/huri-module-tts-cosyvoice/install_cosyvoice.sh /opt/cosyvoice
+#   packages/huri-module-tts/install_cosyvoice.sh /opt/cosyvoice
 #   export PYTHONPATH="/opt/cosyvoice:/opt/cosyvoice/third_party/Matcha-TTS:$PYTHONPATH"
 #
 # Keep COSYVOICE_COMMIT in step with deploy/Dockerfile.nvidia and

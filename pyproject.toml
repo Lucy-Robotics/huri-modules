@@ -49,9 +49,7 @@ pythonpath = [
   "packages/huri-module-emo",
   "packages/huri-module-rag",
   "packages/huri-module-mov",
-  "packages/huri-tts",
-  "packages/huri-module-tts-piper",
-  "packages/huri-module-tts-cosyvoice",
+  "packages/huri-module-tts",
   "packages/huri-hub",
   "examples/cli",
 ]

@@ -146,17 +146,19 @@ rejected with a `session_error` naming both sets.
 | [`huri-module-emo`](packages/huri-module-emo) | `emo`, `eag` | estimates the emotion of speech from its prosody, and aggregates it over an utterance |
 | [`huri-module-rag`](packages/huri-module-rag) | `rag`, `qag` | answers from memory with an LLM, streaming tokens; joins a transcript and its emotion into a question; ingestion and memory tools |
 | [`huri-module-mov`](packages/huri-module-mov) | `mov` | SMPL-X co-speech gestures (EMAGE, vendored model code) |
-| [`huri-module-tts-piper`](packages/huri-module-tts-piper) | `tts` | the default TTS engine: Piper (ONNX, any CPU) |
-| [`huri-module-tts-cosyvoice`](packages/huri-module-tts-cosyvoice) | `tts_cosyvoice` | voice-cloning TTS (CosyVoice3, NVIDIA); wire it instead of `tts` |
-| [`huri-tts`](packages/huri-tts) | — | `StreamingTTS`, the engine-agnostic half both TTS modules share (a library) |
+| [`huri-module-tts`](packages/huri-module-tts) | `tts`, `tts_cosyvoice` | speaks the reply: `tts` is the default engine, Piper (ONNX, any CPU; extra `piper`); `tts_cosyvoice` clones a voice with CosyVoice3 (NVIDIA; extra `cosyvoice`), wired instead of `tts` |
 | [`huri-hub`](packages/huri-hub) | — | `huri hub`: finds and installs modules (a tool, not in the registry; it reads it) |
 
 Each has its own `pyproject.toml` (and version), `huri_module.toml` manifest(s),
-tests and, for GPU modules, `requirements-{nvidia,amd}.txt`. Without a checkout,
-one installs from this repository at a release tag with `#subdirectory=`. None
-of huri-core, huri-events and huri-tts is on PyPI, so a module's HuRI
-dependencies go on the same pip command line, from git, and pip never looks
-them up on an index:
+tests and, for GPU modules, hardware pins (`requirements-<variant>.txt`, see
+[Module dependencies per hardware](#module-dependencies-per-hardware)). A
+package whose modules need different stacks gives each module an extra
+(`[tool.huri-modules.extras]`): huri-module-tts installs no engine by itself,
+`huri-module-tts[piper]` brings Piper's and `[cosyvoice]` CosyVoice's. Without a
+checkout, one installs from this repository at a release tag with
+`#subdirectory=`. Neither huri-core nor huri-events is on PyPI, so a module's
+HuRI dependencies go on the same pip command line, from git, and pip never
+looks them up on an index:
 
 ```sh
 ref=0.1.0   # a huri-modules release tag
@@ -167,12 +169,12 @@ pip install \
   "huri-module-stt @ git+https://github.com/Lucy-Robotics/huri-modules.git@$ref#subdirectory=packages/huri-module-stt"
 ```
 
-The TTS modules also need `huri-tts` (`#subdirectory=packages/huri-tts`); each
-package's README has its full command. `huri hub install stt` (the
-[`huri-hub`](#finding-modules-huri-hub) package) does the same for any module
-of the registry: it installs
-the module with huri-events (and huri-tts for a TTS module) from git, in one
-pip command, at the huri-modules ref it reads the registry from.
+Each package's README has its full command (with the extra a TTS module
+needs: `"huri-module-tts[piper] @ ...#subdirectory=packages/huri-module-tts"`).
+`huri hub install stt` (the [`huri-hub`](#finding-modules-huri-hub) package)
+does the same for any module of the registry: it installs the module (with its
+extra) and huri-events from git, in one pip command, at the huri-modules ref it
+reads the registry from.
 
 ## Versions and compatibility
 
@@ -276,7 +278,13 @@ Re-run a single stage with `--only`:
 ### Module dependencies per hardware
 
 Each module package declares its own dependencies (`pyproject.toml`) and, where
-the hardware matters, exact pins per variant (`requirements-{cpu,nvidia,amd}.txt`).
+the hardware matters, exact pins per variant: `requirements-<variant>.txt`
+(`cpu`, `nvidia`, `amd`) for every module of the package, and
+`requirements-<variant>.<module>.txt` for one module only (e.g.
+`packages/huri-module-tts/requirements-nvidia.tts_cosyvoice.txt`: CosyVoice's
+stack, which a host running Piper's `tts` never gets). A module also brings the
+dependencies of its extra, when its package maps it to one
+(`[tool.huri-modules.extras]`, e.g. `tts = "piper"`).
 The installer merges them for the modules it planned and the host's variant —
 `scripts/module_requirements.py --variant nvidia --modules stt,rag,...` — and
 **stops before installing anything heavy** if two modules pin the same package
@@ -420,13 +428,13 @@ pip install "huri-core[server] @ $CORE" \
   "huri-events @ $MODS#subdirectory=packages/huri-events"
 ```
 
-huri-core, huri-events, huri-tts and huri-cli are not on PyPI: always give them
+huri-core, huri-events and huri-cli are not on PyPI: always give them
 as git URLs on the same command line as what depends on them, so pip never
 looks them up on an index. Use release tags, a huri-core `0.4.x` with a
 huri-modules `0.1.x` (see [Versions](#versions-and-compatibility)); without a
 ref pip takes the repository's default branch. `[server]` is Ray Serve + FastAPI and the pins that
 keep them working; each module package declares its own dependencies, and the
-GPU ones ship `requirements-{nvidia,amd}.txt` pins next to it.
+GPU ones ship `requirements-<variant>[.<module>].txt` pins next to it.
 
 ## Testing
 
@@ -473,7 +481,7 @@ See [`packages/huri-module-stt/tests/test_stt.py`](packages/huri-module-stt/test
 - **packages/huri-events** — `huri-events`, the curated event classes (one per
   `huri.*` topic, with its wire format): a separate, light distribution
   (huri-core + numpy) that clients install to decode the topics
-- **packages/huri-module-\***, **packages/huri-tts** — the curated modules (see
+- **packages/huri-module-\*** — the curated modules (see
   [the table above](#the-curated-modules))
 - **modules/** — verified third-party modules, as git submodules pinned at a
   tag (see [modules/README.md](modules/README.md))
@@ -597,8 +605,9 @@ It reads this repository's `registry.toml` from, in order:
 
 It installs curated modules from this repository at that same ref
 (`git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=packages/<name>`),
-or from the checkout it read, with the curated packages they need
-(huri-events, huri-tts) in the same pip command; verified third-party ones at
+or from the checkout it read, with the extra of their package they need
+(`extra`) and the curated packages they depend on (huri-events) in the same
+pip command; verified third-party ones at
 their pinned tag. A module whose `huri_core` range excludes the installed
 huri-core is refused rather than letting pip replace huri-core. Community
 modules are read from their `pyproject.toml` and `huri_module.toml` on GitHub
@@ -622,6 +631,14 @@ source = { path = "packages/huri-module-stt" }
 source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0", submodule = "modules/servo" }
 # (optional key: subdirectory = "<dir>", when the package is not at the root of its repository)
 ```
+
+An entry may also name `extra = "<extra>"`, the extra of its package the module
+needs (huri-module-tts: `tts` needs `piper`, `tts_cosyvoice` needs
+`cosyvoice`); `huri hub` installs `"<package>[<extra>] @ <source>"`, and
+`check_registry.py` checks it against the package's
+`[tool.huri-modules.extras]`. The registry is `schema = 2` since `extra`
+exists: huri-hub 0.1, which would have installed those modules without their
+engine, refuses it and says to upgrade.
 
 ### Adding a verified third-party module
 

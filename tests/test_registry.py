@@ -136,7 +136,7 @@ def test_a_malformed_events_entry_is_reported(check, key, fragment):
 
 
 def test_every_package_is_listed_or_a_known_library_or_tool(check, monkeypatch):
-    assert set(checker.UNLISTED) == {"huri-tts", "huri-hub"}
+    assert set(checker.UNLISTED) == {"huri-hub"}
     monkeypatch.delitem(checker.UNLISTED, "huri-hub")
     assert check(REGISTRY.read_text()) == [
         "packages/huri-hub provides no module and no event, and is not a known "
@@ -325,3 +325,49 @@ def test_install_dirs_follow_the_registry(servo_checkout, tmp_path, monkeypatch)
     assert checker.install_dirs(registry, servo_checkout) == [checkout / "python"]
     # a submodule that is not checked out installs nothing
     assert checker.install_dirs(registry, ROOT) == []
+
+
+def tts_entry(text, name):
+    start = text.index(f'\n[[module]]\nname = "{name}"\n')
+    end = text.find("\n[[module]]", start + 1)
+    return start, (len(text) if end < 0 else end)
+
+
+@pytest.mark.parametrize(
+    "old,new,fragment",
+    [
+        (
+            'extra = "cosyvoice"',
+            'extra = "piper"',
+            "registry extra 'piper' differs from huri-module-tts's "
+            "[tool.huri-modules.extras] 'cosyvoice'",
+        ),
+        (
+            'extra = "cosyvoice"\n',
+            "",
+            "registry extra None differs from huri-module-tts's "
+            "[tool.huri-modules.extras] 'cosyvoice'",
+        ),
+    ],
+)
+def test_an_extra_must_be_the_one_its_package_maps_the_module_to(
+    check, old, new, fragment
+):
+    text = REGISTRY.read_text()
+    start, end = tts_entry(text, "tts_cosyvoice")
+    entry = text[start:end]
+    assert old in entry
+    text = text[:start] + entry.replace(old, new, 1) + text[end:]
+    problems = check(text)
+    assert problems == [f"module 'tts_cosyvoice': {fragment}"], problems
+
+
+def test_an_extra_on_a_module_its_package_maps_to_none(check):
+    text = REGISTRY.read_text()
+    start, end = tts_entry(text, "tag")
+    entry = text[start:end].rstrip("\n") + '\nextra = "gpu"\n'
+    problems = check(text[:start] + entry + text[end:])
+    assert problems == [
+        "module 'tag': registry extra 'gpu' differs from huri-module-tag's "
+        "[tool.huri-modules.extras] None"
+    ], problems

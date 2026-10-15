@@ -41,10 +41,10 @@ from typing import Dict, List, Optional
 ROOT = Path(__file__).resolve().parents[1]
 VARIANTS = ("cpu", "nvidia", "amd")
 # Never from an index: huri-core is installed from git at HURI_CORE_REF, the
-# rest from packages/ themselves (editable, --no-deps). packages/ also holds
-# libraries and a tool (huri-tts, huri-hub): they provide no huri.modules entry
-# point, so they are never one of the modules merged here.
-INTERNAL = re.compile(r"^huri[-_](core|events|tts|hub|module[-_].*)$")
+# rest from packages/ themselves (editable, --no-deps). packages/ also holds a
+# tool (huri-hub): it provides no huri.modules entry point, so it is never one
+# of the packages merged here.
+INTERNAL = re.compile(r"^huri[-_](core|events|hub|module[-_].*)$")
 _NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 _PIN = re.compile(r"==\s*([^\s,;#]+)")
 

@@ -33,9 +33,11 @@ pip install \
 The registry is read from `--registry PATH|URL|CHECKOUT`, else `HURI_REGISTRY`,
 else the huri-modules checkout the current directory is in, else GitHub at the
 huri-modules ref `HURI_MODULES_REF` (a release tag; `main` when unset). Curated
-modules are installed from huri-modules at that same ref, with the curated
-packages they depend on (huri-events, huri-tts) in the same pip command;
-verified third-party modules at their reviewed tag. Nothing found is ever
+modules are installed from huri-modules at that same ref, with the extra of
+their package they need (registry `extra`: `huri hub install tts_cosyvoice`
+installs `huri-module-tts[cosyvoice]`) and the curated packages they depend on
+(huri-events) in the same pip command; verified third-party modules at their
+reviewed tag. Nothing found is ever
 loaded: enabling a module stays the server operator's `HURI_MODULES` decision.
 `GITHUB_TOKEN` raises GitHub's rate limit.
 
@@ -43,4 +45,5 @@ loaded: enabling a module stays the server operator's `HURI_MODULES` decision.
 `check_registry.py` checks the real file with it. A distribution of
 [huri-modules](https://github.com/Lucy-Robotics/huri-modules), versioned in its
 `pyproject.toml`; a change of the registry schema is a huri-hub version bump in
-the same release (see RELEASING.md there).
+the same release (see RELEASING.md there). huri-hub 0.2 reads registry
+schema 2 (which added `extra`); 0.1 reads schema 1 only.

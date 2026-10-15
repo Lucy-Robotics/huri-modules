@@ -1,5 +1,5 @@
-from huri_tts import StreamingTTS
-from huri_tts_piper.handle import PiperTTSHandle
+from huri_tts.piper.handle import PiperTTSHandle
+from huri_tts.streaming import StreamingTTS
 
 
 class PiperTTS(StreamingTTS):

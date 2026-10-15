@@ -45,6 +45,17 @@ def test_curated_modules_install_from_this_repository_at_one_ref(monkeypatch):
 def test_a_checkout_installs_its_own_packages():
     modules = {m.name: m for m in hub.load_registry(str(REGISTRY))}
     assert Path(modules["stt"].install) == ROOT / "packages" / "huri-module-stt"
+    tts = ROOT / "packages" / "huri-module-tts"
+    assert modules["tts"].install == f"{tts}[piper]"
+    assert modules["tts_cosyvoice"].install == f"{tts}[cosyvoice]"
+
+
+def test_each_tts_engine_installs_with_its_own_extra(monkeypatch):
+    # One package, two engines: each module brings only its engine's stack.
+    modules = remote(REGISTRY.read_text(), monkeypatch, ref="0.1.0")
+    path = f"{REPO}@0.1.0#subdirectory=packages/huri-module-tts"
+    assert modules["tts"].install == f"huri-module-tts[piper] @ {path}"
+    assert modules["tts_cosyvoice"].install == f"huri-module-tts[cosyvoice] @ {path}"
 
 
 @pytest.mark.parametrize(

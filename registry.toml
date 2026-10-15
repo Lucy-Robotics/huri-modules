@@ -88,19 +88,21 @@ source = { path = "packages/huri-module-tag" }
 
 [[module]]
 name = "tts_cosyvoice"
-package = "huri-module-tts-cosyvoice"
+package = "huri-module-tts"
 summary = "Speaks the reply in a cloned voice with CosyVoice3"
 huri_core = ">=0.4.0.dev0,<0.5"
 verified = 2026-10-12
-source = { path = "packages/huri-module-tts-cosyvoice" }
+source = { path = "packages/huri-module-tts" }
+extra = "cosyvoice"
 
 [[module]]
 name = "tts"
-package = "huri-module-tts-piper"
+package = "huri-module-tts"
 summary = "Speaks the reply with Piper (ONNX, CPU, ~30x realtime)"
 huri_core = ">=0.4.0.dev0,<0.5"
 verified = 2026-10-12
-source = { path = "packages/huri-module-tts-piper" }
+source = { path = "packages/huri-module-tts" }
+extra = "piper"
 
 [[module]]
 name = "vad"

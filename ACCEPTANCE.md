@@ -24,7 +24,10 @@ CI (`check_registry.py --run-tests --strict`) checks the mechanical part:
   is the one `huri hub install` gets from `git+<git>@<tag>`, as long as the
   author does not move the tag (the next CI run on this repository reports a
   moved tag);
-- the package installs and provides the module under the listed name;
+- the package installs and provides the module under the listed name; when
+  the module needs an extra of its package (`[tool.huri-modules.extras]` in its
+  `pyproject.toml`, e.g. `tts_cosyvoice = "cosyvoice"`), the entry names that
+  same `extra`, so `huri hub install` installs `<package>[<extra>]`;
 - it ships a `huri_module.toml` whose `summary` and `huri_core` match the entry;
 - HuRI's startup checks pass against the pinned `huri-core` (`HURI_CORE_REF`)
   and the curated events: its topics are registered, with the event classes it

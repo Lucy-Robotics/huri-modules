@@ -3,7 +3,7 @@
 LINT_PATHS = packages examples tests check_registry.py scripts
 # The files mypy gates on in CI (the rest of packages/ has pre-existing errors).
 MYPY_PATHS = packages/huri-events/huri_events examples/cli/huri_cli \
-	packages/huri-tts/huri_tts packages/huri-module-vad/huri_vad \
+	packages/huri-module-tts/huri_tts packages/huri-module-vad/huri_vad \
 	packages/huri-module-stt/huri_stt packages/huri-module-tag/huri_tag \
 	packages/huri-hub/huri_hub check_registry.py
 

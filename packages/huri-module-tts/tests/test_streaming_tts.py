@@ -6,7 +6,7 @@ import asyncio
 import numpy as np
 from huri_events.audio import Audio
 from huri_events.text import Token
-from huri_tts import StreamingTTS
+from huri_tts.streaming import StreamingTTS
 
 from huri_core.testing import LocalHandle, ModuleHarness
 

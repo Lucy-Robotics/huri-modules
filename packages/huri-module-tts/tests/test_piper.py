@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import numpy as np
 from huri_events.text import Token
-from huri_tts_piper.handle import PiperTTSHandle
-from huri_tts_piper.module import PiperTTS
+from huri_tts.piper.handle import PiperTTSHandle
+from huri_tts.piper.module import PiperTTS
 
 from huri_core.testing import LocalHandle, ModuleHarness
 

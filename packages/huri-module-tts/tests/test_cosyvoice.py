@@ -1,7 +1,7 @@
 """What can be checked of CosyVoice without its sources and model."""
 
-from huri_tts_cosyvoice.handle import CosyVoiceTTSHandle, _normalize_transcript
-from huri_tts_cosyvoice.module import CosyVoiceTTS
+from huri_tts.cosyvoice.handle import CosyVoiceTTSHandle, _normalize_transcript
+from huri_tts.cosyvoice.module import CosyVoiceTTS
 
 
 def test_a_bare_transcript_is_placed_after_the_prompt_marker():

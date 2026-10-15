@@ -1,4 +1,5 @@
-# Hardware pins of huri-module-tts-cosyvoice on CPU (slow: ~7x slower than realtime). torch from the CPU index, onnxruntime instead of -gpu.
+# Hardware pins of module tts_cosyvoice (huri-module-tts) on CPU (slow: ~7x slower than realtime). torch from the CPU index, onnxruntime instead of -gpu.
+# Only when tts_cosyvoice is planned: the `tts` module (piper) never gets them.
 # Installed by scripts/install_local.sh through scripts/module_requirements.py.
 numpy==1.26.4
 transformers==4.51.3

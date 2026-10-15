@@ -421,9 +421,10 @@ stage_enabled() {
 
 mb_to_gb() { awk -v m="$1" 'BEGIN{printf "%.1f", m/1024}'; }
 
-# The plan calls the TTS module "tts"; the chosen engine decides which package
-# provides it: huri-module-tts-piper registers `tts` (deployment TTSHandle),
-# huri-module-tts-cosyvoice `tts_cosyvoice` (deployment CosyVoiceTTSHandle).
+# The plan calls the TTS module "tts"; the chosen engine decides which module
+# of huri-module-tts serves it: `tts` is Piper (deployment TTSHandle, extra
+# `piper`), `tts_cosyvoice` CosyVoice3 (deployment CosyVoiceTTSHandle, extra
+# `cosyvoice` and its requirements-<variant>.tts_cosyvoice.txt pins).
 tts_module() { if [[ "$TTS_ENGINE" == "cosyvoice" ]]; then echo tts_cosyvoice; else echo tts; fi; }
 tts_deployment() { if [[ "$TTS_ENGINE" == "cosyvoice" ]]; then echo CosyVoiceTTSHandle; else echo TTSHandle; fi; }
 served_modules() { # P_MODULES with the engine's TTS module name
@@ -1450,8 +1451,9 @@ install_python_deps() {
 
   # What each planned module declares for this host's hardware — decided
   # after the ROCm fallback above, which can turn an AMD host into a CPU one
-  # (packages/*/pyproject.toml + requirements-<variant>.txt; the variant is the
-  # host's since the torch build is shared). Merged, and checked for modules
+  # (packages/*/pyproject.toml, with the extra a module needs, +
+  # requirements-<variant>.txt and requirements-<variant>.<module>.txt; the
+  # variant is the host's since the torch build is shared). Merged, and checked for modules
   # pinning one package to different versions, before anything heavy is
   # installed; the merged file itself is installed last (step 7).
   local variant=cpu
@@ -1462,7 +1464,7 @@ install_python_deps() {
     err "the planned modules cannot be installed together on this $variant host:"
     local line
     while IFS= read -r line; do note "$line"; done <<<"$merged"
-    die "fix the pins in packages/*/requirements-$variant.txt, or leave a module out with --modules"
+    die "fix the pins in packages/*/requirements-$variant[.<module>].txt, or leave a module out with --modules"
   fi
   (( DRY_RUN )) || printf '%s\n' "$merged" | write_file "$modules_req"
 
@@ -1570,18 +1572,16 @@ install_python_deps() {
     run "$PIP" install "${C[@]}" -r "$REPO_ROOT/requirements-amd.txt"
   fi
 
-  # 6. TTS engine.
-  if [[ "$P_TTS_DEV" != "off" ]]; then
-    if [[ "$TTS_ENGINE" == "piper" ]]; then
-      # abi3 wheel (py3.9+, x86_64 and aarch64), and its only runtime deps are
-      # onnxruntime + pathvalidate — no torch, so nothing here can disturb the
-      # vendor torch installed above.
-      info "  piper-tts (onnx, no torch)"
-      run "$PIP" install "${C[@]}" piper-tts
-    else
-      # CosyVoice has no setup.py upstream → clone + PYTHONPATH.
-      install_cosyvoice
-    fi
+  # 6. TTS engine. Piper's piper-tts is the `piper` extra of huri-module-tts,
+  #    so in the module requirements (step 7; requirements.txt pins it too): an
+  #    abi3 wheel whose only runtime deps are onnxruntime + pathvalidate — no
+  #    torch, nothing that can disturb the vendor torch installed above.
+  #    CosyVoice's stack is its `cosyvoice` extra and its
+  #    requirements-<variant>.tts_cosyvoice.txt pins (step 7), but CosyVoice
+  #    itself has no setup.py upstream → clone + PYTHONPATH (as
+  #    packages/huri-module-tts/install_cosyvoice.sh does).
+  if [[ "$P_TTS_DEV" != "off" && "$TTS_ENGINE" == "cosyvoice" ]]; then
+    install_cosyvoice
   fi
 
   # 7. The planned modules' own requirements for this hardware (merged above).

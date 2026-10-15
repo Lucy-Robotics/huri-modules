@@ -1,6 +1,9 @@
-# CosyVoice3 stack for huri-module-tts-cosyvoice on NVIDIA (CUDA 12.1 wheels):
+# CosyVoice3 stack of module tts_cosyvoice (huri-module-tts) on NVIDIA (CUDA 12.1
+# wheels); only when tts_cosyvoice is planned, the `tts` module (piper) never
+# gets them. Installed by scripts/install_local.sh through
+# scripts/module_requirements.py; by hand:
 #   pip install -c constraints.txt --extra-index-url https://download.pytorch.org/whl/cu121 \
-#     -r requirements-nvidia.txt -e .
+#     -r requirements-nvidia.tts_cosyvoice.txt -e '.[cosyvoice]'
 # then ./install_cosyvoice.sh DEST and add it to PYTHONPATH.
 torch==2.3.1
 torchaudio==2.3.1

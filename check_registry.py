@@ -73,9 +73,8 @@ from huri_core.core.plugins import (
 
 REPO = Path(__file__).resolve().parent
 # Distributions of packages/ that provide no module and no event, so are not
-# in the registry: a library the curated modules share, and a tool.
+# in the registry: a tool.
 UNLISTED = {
-    "huri-tts": "the library both TTS modules share",
     "huri-hub": "the `huri hub` command, this registry's reader",
 }
 

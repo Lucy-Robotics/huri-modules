@@ -1,5 +1,5 @@
-from huri_tts import StreamingTTS
-from huri_tts_cosyvoice.handle import CosyVoiceTTSHandle
+from huri_tts.cosyvoice.handle import CosyVoiceTTSHandle
+from huri_tts.streaming import StreamingTTS
 
 
 class CosyVoiceTTS(StreamingTTS):
