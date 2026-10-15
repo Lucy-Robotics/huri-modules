@@ -1,6 +1,6 @@
 # huri-modules
 
-The one repository to clone to try or deploy [HuRI](https://github.com/Lucy-Robotics/HuRI-landing),
+The one repository to clone to try or deploy [HuRI](https://github.com/Lucy-Robotics/huri-core#huri-ecosystem),
 the open-source conversational pipeline for humanoid robots and virtual avatars:
 speech to text, retrieval-augmented answers from an LLM, emotion, speech
 synthesis and co-speech gestures, served to many clients (robots) at once by a
@@ -758,10 +758,12 @@ its repository.
 
 ## More
 
-- [HuRI](https://github.com/Lucy-Robotics/HuRI-landing) — where to start, the
-  architecture and how to contribute
+- [HuRI ecosystem](https://github.com/Lucy-Robotics/huri-core#huri-ecosystem) —
+  where to start, the repositories and what is built with HuRI
 - [huri-core](https://github.com/Lucy-Robotics/huri-core) — the framework, its
-  public surface and its releases
+  public surface and its releases; the
+  [architecture](https://github.com/Lucy-Robotics/huri-core/blob/main/docs/ARCHITECTURE.md)
+  and [how to contribute](https://github.com/Lucy-Robotics/huri-core/blob/main/CONTRIBUTING.md)
 - [huri-plugin-template](https://github.com/Lucy-Robotics/huri-plugin-template) —
   the starting point for a new module
 - HuRI's complete developer documentation is available
