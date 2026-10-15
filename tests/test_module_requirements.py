@@ -162,6 +162,17 @@ def test_piper_never_gets_cosyvoice_s_stack(variant):
         assert any(line.startswith("onnxruntime==1.18.0") for line in cosyvoice)
 
 
+@pytest.mark.parametrize("variant", mr.VARIANTS)
+def test_the_aggregators_stay_light(variant):
+    """eag and qag only join events: planning them without emo / rag brings
+    neither the classifier's torch stack nor rag's retrieval libraries."""
+    heavy = {"torch", "torchaudio", "transformers", "sentence-transformers"}
+    heavy |= {"qdrant-client", "httpx", "pypdf", "semantic-chunker"}
+    assert not heavy & names(merged(variant, ["eag", "qag"]))
+    assert {"torch", "transformers"} <= names(merged(variant, ["emo"]))
+    assert {"qdrant-client", "sentence-transformers"} <= names(merged(variant, ["rag"]))
+
+
 def test_origins_name_the_module_and_the_extra():
     lines = merged("nvidia", ["tts_cosyvoice"])
     torch = next(line for line in lines if line.startswith("torch=="))

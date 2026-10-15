@@ -12,13 +12,22 @@ dependencies = [
   "huri-core[server]>=0.4.0.dev0,<0.5",
   "huri-events>=0.1,<0.2",
   "numpy>=1.26,<2",
-  "torch",
-  "transformers>=4.46",
 ]
+
+# The classifier of `emo` (wav2vec2). `eag` only aggregates its events, so a
+# host that plans eag alone installs neither torch nor transformers.
+[project.optional-dependencies]
+model = ["torch", "transformers>=4.46"]
 
 [project.entry-points."huri.modules"]
 emo = "huri_emo.module:EMO"
 eag = "huri_emo.aggregator:EAG"
+
+# The extra each module needs: read by huri-modules' tooling
+# (scripts/module_requirements.py, check_registry.py against registry.toml's
+# `extra`), not by huri-core.
+[tool.huri-modules.extras]
+emo = "model"
 
 [tool.setuptools.packages.find]
 include = ["huri_emo*"]

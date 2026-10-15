@@ -11,6 +11,13 @@ requires-python = ">=3.10"
 dependencies = [
   "huri-core[server]>=0.4.0.dev0,<0.5",
   "huri-events>=0.1,<0.2",
+]
+
+# What `rag` and the ingestion and memory tools (huri_rag.ingestion,
+# memory_inspect, memory_maintenance) need. `qag` only joins events, so a host
+# that plans qag alone installs none of it.
+[project.optional-dependencies]
+rag = [
   "numpy>=1.26,<2",
   "httpx>=0.27.2,<0.28",
   "qdrant-client>=1.18,<1.19",
@@ -23,6 +30,12 @@ dependencies = [
 [project.entry-points."huri.modules"]
 rag = "huri_rag.rag:RAG"
 qag = "huri_rag.question_aggregator:QAG"
+
+# The extra each module needs: read by huri-modules' tooling
+# (scripts/module_requirements.py, check_registry.py against registry.toml's
+# `extra`), not by huri-core.
+[tool.huri-modules.extras]
+rag = "rag"
 
 [tool.setuptools.packages.find]
 include = ["huri_rag*"]

@@ -16,6 +16,11 @@ amd). A module of a package is planned with:
     `[project.optional-dependencies] cosyvoice`). Read by huri-modules'
     tooling only (this script, check_registry.py); huri-core ignores it.
 
+So a light module of a package never gets a heavy sibling's stack:
+huri-module-emo's `eag` and huri-module-rag's `qag` import none of what `emo`
+(extra `model`, requirements-<variant>.emo.txt) and `rag` (extra `rag`,
+requirements-amd.rag.txt) need.
+
 Given the modules to install and the variant, this prints one requirements
 file — and refuses, naming the modules involved, when two of them pin the same
 package to different versions, since pip alone would only fail late, or

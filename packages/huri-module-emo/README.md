@@ -8,11 +8,17 @@ Speech emotion from prosody (wav2vec2 classifier), and its aggregator.
 | `eag` | `huri.emotion` → `huri.partial_question` | Aggregates emotion estimates over an utterance |
 
 ```sh
-pip install -e packages/huri-module-emo     # from a huri-modules checkout, next to huri-core and huri-events
+pip install -e 'packages/huri-module-emo[model]'   # from a huri-modules checkout, next to huri-core and huri-events
 HURI_MODULES=emo,eag ...   # enable it on the server
 ```
 
-Hardware-specific pins: `requirements-nvidia.txt`, `requirements-amd.txt` (install them before the package).
+`emo` needs the `model` extra (torch and transformers, for its wav2vec2
+classifier); `eag` only aggregates events and needs none of it, so a host that
+runs `eag` alone installs the package without the extra
+(`[tool.huri-modules.extras]` in `pyproject.toml` says which module needs which
+extra; `huri hub install` and `scripts/install_local.sh` add it). Hardware pins
+of `emo`: `requirements-<variant>.emo.txt` (`cpu`, `nvidia`, `amd`; install them
+before the package).
 
 A distribution of
 [huri-modules](https://github.com/Lucy-Robotics/huri-modules), versioned in its
@@ -26,5 +32,5 @@ core=0.4.0  # the huri-core ref in that release's HURI_CORE_REF file
 pip install \
   "huri-core[server] @ git+https://github.com/Lucy-Robotics/huri-core.git@$core" \
   "huri-events @ git+https://github.com/Lucy-Robotics/huri-modules.git@$ref#subdirectory=packages/huri-events" \
-  "huri-module-emo @ git+https://github.com/Lucy-Robotics/huri-modules.git@$ref#subdirectory=packages/huri-module-emo"
+  "huri-module-emo[model] @ git+https://github.com/Lucy-Robotics/huri-modules.git@$ref#subdirectory=packages/huri-module-emo"
 ```

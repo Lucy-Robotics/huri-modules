@@ -37,6 +37,7 @@ summary = "Estimates the emotion of speech from its prosody"
 huri_core = ">=0.4.0.dev0,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-emo" }
+extra = "model"
 
 [[module]]
 name = "eag"
@@ -61,6 +62,7 @@ summary = "Answers questions from memory with an LLM, streaming tokens"
 huri_core = ">=0.4.0.dev0,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-rag" }
+extra = "rag"
 
 [[module]]
 name = "qag"

@@ -154,7 +154,10 @@ tests and, for GPU modules, hardware pins (`requirements-<variant>.txt`, see
 [Module dependencies per hardware](#module-dependencies-per-hardware)). A
 package whose modules need different stacks gives each module an extra
 (`[tool.huri-modules.extras]`): huri-module-tts installs no engine by itself,
-`huri-module-tts[piper]` brings Piper's and `[cosyvoice]` CosyVoice's. Without a
+`huri-module-tts[piper]` brings Piper's and `[cosyvoice]` CosyVoice's;
+`huri-module-emo[model]` is `emo`'s classifier (torch, transformers) and
+`huri-module-rag[rag]` is `rag`'s retrieval stack, which their aggregators
+`eag` and `qag` do not need. Without a
 checkout, one installs from this repository at a release tag with
 `#subdirectory=`. Neither huri-core nor huri-events is on PyPI, so a module's
 HuRI dependencies go on the same pip command line, from git, and pip never
@@ -284,7 +287,12 @@ the hardware matters, exact pins per variant: `requirements-<variant>.txt`
 `packages/huri-module-tts/requirements-nvidia.tts_cosyvoice.txt`: CosyVoice's
 stack, which a host running Piper's `tts` never gets). A module also brings the
 dependencies of its extra, when its package maps it to one
-(`[tool.huri-modules.extras]`, e.g. `tts = "piper"`).
+(`[tool.huri-modules.extras]`, e.g. `tts = "piper"`). huri-module-emo and
+huri-module-rag split the same way: `emo`'s torch and transformers are its
+`model` extra and its pins `requirements-<variant>.emo.txt`, `rag`'s Qdrant and
+sentence-transformers its `rag` extra and `requirements-amd.rag.txt`, so a host
+that plans only the aggregators `eag` and `qag` (which import neither) stays
+light.
 The installer merges them for the modules it planned and the host's variant —
 `scripts/module_requirements.py --variant nvidia --modules stt,rag,...` — and
 **stops before installing anything heavy** if two modules pin the same package
@@ -634,7 +642,7 @@ source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0", sub
 
 An entry may also name `extra = "<extra>"`, the extra of its package the module
 needs (huri-module-tts: `tts` needs `piper`, `tts_cosyvoice` needs
-`cosyvoice`); `huri hub` installs `"<package>[<extra>] @ <source>"`, and
+`cosyvoice`; `emo` needs `model`, `rag` needs `rag`); `huri hub` installs `"<package>[<extra>] @ <source>"`, and
 `check_registry.py` checks it against the package's
 `[tool.huri-modules.extras]`. The registry is `schema = 2` since `extra`
 exists: huri-hub 0.1, which would have installed those modules without their

@@ -1,0 +1,4 @@
+# Hardware pins of module rag (huri-module-rag) on AMD. sentence-transformers pulls transformers onto the ROCm torch.
+# Only when rag is planned: the `qag` module never gets them.
+# Installed by scripts/install_local.sh through scripts/module_requirements.py.
+transformers==4.46.3  # compatible with the ROCm torch 2.8 wheel
