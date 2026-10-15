@@ -11,7 +11,7 @@ from packaging.utils import canonicalize_name
 from huri_core.core.compat import check_manifests, check_modules
 from huri_core.core.plugins import find_manifest, load_events, load_modules
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = sorted((ROOT / "packages").glob("huri-module-*"))
 
 

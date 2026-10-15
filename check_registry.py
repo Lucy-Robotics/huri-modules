@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check registry.toml against the packages it lists (run by CI on every change).
 
-    python huri-modules/check_registry.py [--run-tests]
+    python check_registry.py [--run-tests] [--strict]
 
 For each listed module: its package is where `source` says, provides the module
 under that name, ships a manifest that agrees with the entry, passes HuRI's
@@ -9,6 +9,18 @@ startup compatibility checks against the installed huri-core and events, and
 only produces topics of an event package it declares. Every curated module
 (packages/huri-module-*) must be listed. --run-tests also runs each listed
 package's own tests (huri_core.testing, no Ray needed).
+
+A `source` is one of two kinds:
+
+    source = { path = "packages/huri-module-stt" }       # curated, in this repo
+    source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0",
+               submodule = "modules/servo" }            # verified third party
+               # optional: subdirectory = "<dir in that repository>"
+
+A third-party entry is checked like a curated one when its submodule is checked
+out (`git submodule update --init`), and its checkout must then be at `tag`. A
+submodule that is not checked out is skipped and named; --strict makes it a
+problem.
 
 Needs the listed packages installed (pip install -e), like the server.
 """
@@ -20,7 +32,7 @@ import sys
 import tomllib
 from importlib.metadata import entry_points
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from packaging.requirements import Requirement
 
@@ -34,8 +46,12 @@ from huri_core.core.plugins import (
     topic_namespace,
 )
 
-HERE = Path(__file__).resolve().parent
-REPO = HERE.parent
+REPO = Path(__file__).resolve().parent
+# Source kind -> (required keys, optional keys).
+SOURCE_KEYS = {
+    "path": ({"path"}, set()),
+    "git": ({"git", "tag", "submodule"}, {"subdirectory"}),
+}
 
 
 def _pyproject(path: Path) -> Dict[str, Any]:
@@ -49,8 +65,76 @@ def _norm(name: str) -> str:
     return name.replace("_", "-").lower()
 
 
-def check(registry_path: Path, repo: Path) -> List[str]:
+def _git(directory: Path, *args: str) -> Optional[str]:
+    res = subprocess.run(
+        ["git", "-C", str(directory), *args], capture_output=True, text=True
+    )
+    return res.stdout.strip() if res.returncode == 0 else None
+
+
+def source_dir(
+    source: Any, where: str, repo: Path, problems: List[str], skipped: List[str]
+) -> Optional[Path]:
+    """The directory holding the entry's package, or None when it cannot be
+    checked: a malformed source (added to `problems`) or a third-party
+    submodule that is not checked out (added to `skipped`)."""
+    if not isinstance(source, dict):
+        problems.append(f"{where}: 'source' must be a table")
+        return None
+    kinds = [kind for kind in SOURCE_KEYS if kind in source]
+    if len(kinds) != 1:
+        problems.append(f"{where}: 'source' needs exactly one of 'path' or 'git'")
+        return None
+    required, optional = SOURCE_KEYS[kinds[0]]
+    missing = sorted(required - set(source))
+    unknown = sorted(set(source) - required - optional)
+    if missing or unknown:
+        problems.append(
+            f"{where}: {kinds[0]} source"
+            + (f" lacks {missing}" if missing else "")
+            + (f" has unknown {unknown}" if unknown else "")
+        )
+        return None
+    if not all(isinstance(value, str) and value for value in source.values()):
+        problems.append(f"{where}: every 'source' value must be a non-empty string")
+        return None
+    if "path" in source:
+        return repo / source["path"]
+
+    if not source["git"].startswith("https://"):
+        problems.append(f"{where}: git source must be an https URL")
+        return None
+    submodule = Path(source["submodule"])
+    if submodule.parent != Path("modules"):
+        problems.append(f"{where}: submodule must be modules/<name>, not {submodule}")
+        return None
+    checkout = repo / submodule
+    # A submodule's checkout has a .git file; an uninitialised one is empty.
+    if not (checkout / ".git").exists():
+        skipped.append(f"{where}: submodule {submodule} is not checked out")
+        return None
+    head = _git(checkout, "rev-parse", "HEAD")
+    tagged = _git(checkout, "rev-parse", f"refs/tags/{source['tag']}^{{commit}}")
+    if tagged is None:
+        problems.append(f"{where}: {submodule} has no tag {source['tag']!r}")
+        return None
+    if head != tagged:
+        problems.append(f"{where}: {submodule} is not at tag {source['tag']!r}")
+        return None
+    return checkout / source.get("subdirectory", ".")
+
+
+def check(
+    registry_path: Path,
+    repo: Path = REPO,
+    strict: bool = False,
+    skipped: Optional[List[str]] = None,
+) -> List[str]:
+    """Every problem with the registry. Entries that could not be checked (a
+    submodule not checked out) are added to `skipped`, and are problems too
+    when `strict`."""
     problems: List[str] = []
+    skipped = [] if skipped is None else skipped
     registry = tomllib.loads(registry_path.read_text())
     if registry.get("schema") != 1:
         return [f"unsupported schema {registry.get('schema')!r} (expected 1)"]
@@ -63,7 +147,9 @@ def check(registry_path: Path, repo: Path) -> List[str]:
 
     for entry in registry.get("events", []):
         where = f"events {entry.get('package')!r}"
-        source = repo / entry.get("source", {}).get("path", "<missing>")
+        source = source_dir(entry.get("source"), where, repo, problems, skipped)
+        if source is None:
+            continue
         if not (source / "pyproject.toml").is_file():
             problems.append(f"{where}: no package at source {source}")
             continue
@@ -77,6 +163,7 @@ def check(registry_path: Path, repo: Path) -> List[str]:
             )
 
     listed: Dict[str, Dict[str, Any]] = {}
+    checked: List[str] = []  # listed and with a package at hand
     for entry in registry.get("module", []):
         name = entry.get("name", "<missing>")
         where = f"module {name!r}"
@@ -86,10 +173,13 @@ def check(registry_path: Path, repo: Path) -> List[str]:
         listed[name] = entry
         if not isinstance(entry.get("verified"), dt.date):
             problems.append(f"{where}: 'verified' must be a date (YYYY-MM-DD)")
-        source = repo / entry.get("source", {}).get("path", "<missing>")
+        source = source_dir(entry.get("source"), where, repo, problems, skipped)
+        if source is None:
+            continue
         if not (source / "pyproject.toml").is_file():
             problems.append(f"{where}: no package at source {source}")
             continue
+        checked.append(name)
         project = _pyproject(source)
         if _norm(project["name"]) != _norm(entry.get("package", "")):
             problems.append(
@@ -132,7 +222,8 @@ def check(registry_path: Path, repo: Path) -> List[str]:
         problems.append(f"curated module {name!r} (packages/) is not in the registry")
 
     try:
-        modules = load_modules(sorted(listed))
+        # A skipped submodule's module is not expected to be installed.
+        modules = load_modules(sorted(checked))
         events = load_events()
         check_modules(modules, events)
         manifests = {}
@@ -143,38 +234,49 @@ def check(registry_path: Path, repo: Path) -> List[str]:
         check_manifests(modules, manifests, events)
     except (PluginError, ValueError, CompatibilityError) as e:
         problems.append(f"startup compatibility: {e}")
+    if strict:
+        problems += skipped
     return problems
 
 
-def run_tests(registry_path: Path, repo: Path) -> List[str]:
+def run_tests(registry_path: Path, repo: Path = REPO) -> List[str]:
     registry = tomllib.loads(registry_path.read_text())
-    sources = {
-        e["source"]["path"]
-        for e in registry.get("module", []) + registry.get("events", [])
-        if "path" in e.get("source", {})
-    }
+    sources = set()
+    for entry in registry.get("module", []) + registry.get("events", []):
+        source = source_dir(entry.get("source"), "", repo, [], [])
+        if source is not None:
+            sources.add(source.resolve())
     failed = []
     for source in sorted(sources):
-        tests = repo / source / "tests"
+        tests = source / "tests"
         if not tests.is_dir():
             continue
         res = subprocess.run(
             [sys.executable, "-m", "pytest", "-q", str(tests)], cwd=repo
         )
         if res.returncode != 0:
-            failed.append(f"{source}: tests failed")
+            failed.append(f"{source.relative_to(repo.resolve())}: tests failed")
     return failed
 
 
 def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--registry", type=Path, default=HERE / "registry.toml")
+    parser.add_argument("--registry", type=Path, default=REPO / "registry.toml")
     parser.add_argument("--run-tests", action="store_true")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="a third-party submodule that is not checked out is a problem",
+    )
     args = parser.parse_args(argv)
 
-    problems = check(args.registry, REPO)
+    skipped: List[str] = []
+    problems = check(args.registry, REPO, strict=args.strict, skipped=skipped)
     if args.run_tests and not problems:
         problems = run_tests(args.registry, REPO)
+    if not args.strict:
+        for note in skipped:
+            print(f"  skipped {note} (git submodule update --init)")
     for problem in problems:
         print(f"- {problem}")
     print("registry OK" if not problems else f"{len(problems)} problem(s)")

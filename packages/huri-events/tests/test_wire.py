@@ -92,3 +92,21 @@ def test_huri_events_registers_every_curated_topic():
     }
     dists = {getattr(eps[name].dist, "name", None) for name in curated}
     assert dists == {"huri-events"}
+
+
+def test_motion_survives_the_wire():
+    """from_wire used to drop the body, yielding a zero-frame Motion."""
+    frames = 4
+    original = Motion(
+        poses=np.arange(frames * 165, dtype=np.float32).reshape(frames, 165),
+        expressions=np.arange(frames * 100, dtype=np.float32).reshape(frames, 100),
+        trans=np.arange(frames * 3, dtype=np.float32).reshape(frames, 3),
+        pts=1.5,
+    )
+    decoded = roundtrip(original)
+
+    assert decoded.pts == pytest.approx(original.pts)
+    assert decoded.fps == original.fps
+    np.testing.assert_array_equal(decoded.poses, original.poses)
+    np.testing.assert_array_equal(decoded.expressions, original.expressions)
+    np.testing.assert_array_equal(decoded.trans, original.trans)

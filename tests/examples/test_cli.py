@@ -18,8 +18,11 @@ from omegaconf import OmegaConf
 from huri_core.core.dataclasses.config import ClientConfig
 
 ROOT = Path(__file__).resolve().parents[2]
+# The shipped client configs: not the template, nor what the installer writes.
 CONFIGS = sorted(
-    p for p in (ROOT / "config").glob("client_*.yaml") if "template" not in p.name
+    p
+    for p in (ROOT / "config").glob("client_*.yaml")
+    if "template" not in p.name and not p.name.endswith(".generated.yaml")
 )
 
 

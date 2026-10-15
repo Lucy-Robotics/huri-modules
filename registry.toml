@@ -1,11 +1,16 @@
 # The curated HuRI modules (tier 3). Being listed here is what "verified"
 # means: the entry was reviewed in a pull request to this file, and CI checks
 # it (check_registry.py) on every change. See ACCEPTANCE.md for what a listing
-# requires, and README.md for how this directory becomes its own repository.
+# requires, and README.md for adding one.
 #
-# `source` is where the reviewed code is: today a directory of the HuRI repo;
-# once the packages live in their own repositories, a git submodule under
-# modules/<name>, pinned at a tag: source = { submodule = "modules/stt", tag = "v0.1.0" }
+# `source` is where the reviewed code is, one of:
+#   source = { path = "packages/<package>" }
+#       a curated package of this repository, installed (by `huri hub` too) as
+#       git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=<path>
+#   source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0", submodule = "modules/servo" }
+#       a verified third-party module, pinned as a git submodule at that tag and
+#       installed as git+<git>@<tag> (optional key: subdirectory = "<dir>",
+#       appended as #subdirectory=<dir>)
 
 schema = 1
 

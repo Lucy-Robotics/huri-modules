@@ -27,7 +27,8 @@ from typing import Dict, List, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 VARIANTS = ("cpu", "nvidia", "amd")
-# Installed from packages/ themselves (editable, --no-deps), never from an index.
+# Never from an index: huri-core is installed from git at HURI_CORE_REF, the
+# rest from packages/ themselves (editable, --no-deps).
 INTERNAL = re.compile(r"^huri[-_](core|events|tts|module[-_].*)$")
 _NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 _PIN = re.compile(r"==\s*([^\s,;#]+)")

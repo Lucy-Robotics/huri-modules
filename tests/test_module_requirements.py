@@ -9,7 +9,7 @@ import pytest
 from packaging.requirements import Requirement as PepRequirement
 from packaging.utils import canonicalize_name
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location(
     "module_requirements", ROOT / "scripts" / "module_requirements.py"
 )
@@ -27,7 +27,7 @@ def merged(variant, modules=ALL, root=ROOT):
 @pytest.mark.parametrize("variant", mr.VARIANTS)
 def test_every_curated_module_installs_together_on_each_variant(variant):
     lines = merged(variant)
-    assert not any(line.startswith("huri") for line in lines)  # from packages/
+    assert not any(line.startswith("huri") for line in lines)  # installed separately
 
 
 @pytest.mark.parametrize("variant", mr.VARIANTS)
