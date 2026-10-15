@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64,<82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "huri-hub"
+version = "0.1.0"
+description = "`huri hub`: find and install HuRI modules from the verified registry and the community"
+readme = "README.md"
+requires-python = ">=3.10"
+# Light on purpose: a workstation tool, no ray, no torch. huri-core's base
+# install is enough (module manifests, the `huri` command).
+dependencies = [
+  "huri-core>=0.4.0.dev0,<0.5",
+  # Version ranges of the registry and of module manifests.
+  "packaging>=23",
+  "tomli>=2; python_version < '3.11'",
+]
+
+# `huri hub ...`: huri-core's `huri` command runs the commands of this group.
+[project.entry-points."huri.commands"]
+hub = "huri_hub.cli:main"
+
+# The same command without huri-core's dispatcher.
+[project.scripts]
+huri-hub = "huri_hub.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["huri_hub*"]

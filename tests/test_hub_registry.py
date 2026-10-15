@@ -1,13 +1,14 @@
-"""This repository's registry.toml, read by huri-core's `huri hub`: the two
-share its schema, so a change to either is checked here against the real file
-(offline: every URL is faked)."""
+"""This repository's registry.toml, read by `huri hub` (packages/huri-hub): a
+change to the file or to its reader is checked here against the real file
+(offline: every URL is faked). packages/huri-hub/tests has the reader's own
+tests, on inline registries."""
 
 import tomllib
 from pathlib import Path
 
 import pytest
-
-hub = pytest.importorskip("huri_core.hub")
+from huri_hub import cli
+from huri_hub import registry as hub
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "registry.toml"
@@ -64,6 +65,6 @@ def test_a_verified_third_party_module_installs_from_its_pinned_tag(
 
 def test_hub_lists_the_curated_modules_for_a_supported_core(capsys):
     argv = ["list", "--registry", str(REGISTRY), "--verified", "--core", "0.4.0"]
-    assert hub.main(argv, fetch=lambda url: None) == 0
+    assert cli.main(argv, fetch=lambda url: None) == 0
     listed = {line.split()[0] for line in capsys.readouterr().out.splitlines()[:-1]}
     assert listed == {entry["name"] for entry in ENTRIES}
