@@ -1557,7 +1557,7 @@ install_python_deps() {
     err "the planned modules cannot be installed together on this $variant host:"
     local line
     while IFS= read -r line; do note "$line"; done <<<"$merged"
-    die "fix the pins in packages/*/requirements-$variant[.<module>].txt, or leave a module out with --modules"
+    die "fix the pins in packages/*/requirements-${variant}[.<module>].txt, or leave a module out with --modules"
   fi
   (( DRY_RUN )) || printf '%s\n' "$merged" | write_file "$modules_req"
 
