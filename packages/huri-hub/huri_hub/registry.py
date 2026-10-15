@@ -26,11 +26,12 @@ key of the registry is a change here, released with huri-hub.
     #            (optional: subdirectory = "<dir in that repository>")
 """
 
+import datetime as dt
 import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
 
 from huri_hub.web import RAW, Fetch, HubError, Warn, http_fetch, warn_stderr
 from packaging.requirements import InvalidRequirement, Requirement
@@ -107,13 +108,17 @@ class HubModule:
 # --- the schema -------------------------------------------------------------------
 
 
-def parse(text: str, location: str) -> Dict[str, Any]:
+def parse(text: str, location: str, require_schema: bool = False) -> Dict[str, Any]:
     """The registry in `text` (read from `location`), as TOML of a schema this
-    huri-hub reads; HubError otherwise."""
+    huri-hub reads; HubError otherwise. `huri hub` reads a registry without a
+    `schema` key as this one; `require_schema` (check_registry.py) refuses it.
+    """
     try:
         registry = loads_toml(text)
     except ValueError as e:  # tomllib.TOMLDecodeError
         raise HubError(f"{location} is not valid TOML: {e}") from e
+    if require_schema and "schema" not in registry:
+        raise HubError(f"{location}: missing `schema` (expected {SCHEMA})")
     if registry.get("schema", SCHEMA) != SCHEMA:
         raise HubError(
             f"{location} has registry schema {registry.get('schema')!r}; this "
@@ -151,32 +156,50 @@ def check_source(where: str, source: Any) -> str:
     return kind
 
 
+def _check_string(where: str, entry: Mapping[str, Any], key: str) -> None:
+    value = entry.get(key)
+    if not isinstance(value, str) or not value:
+        raise HubError(f"{where}: `{key}` must be a non-empty string")
+
+
 def check_events_entry(index: int, entry: Any) -> str:
     """The directory of the `index`-th (from 0) [[events]] entry, a curated
-    package; HubError when the entry is malformed."""
-    package = entry.get("package") if isinstance(entry, dict) else None
+    package with its `package` and `namespace`; HubError when the entry is
+    malformed."""
+    if not isinstance(entry, dict):
+        raise HubError(f"registry events #{index + 1} is not a table")
+    package = entry.get("package")
     where = f"registry events {package or f'#{index + 1}'!r}"
-    source: Any = entry.get("source") if isinstance(entry, dict) else None
+    _check_string(where, entry, "package")
+    _check_string(where, entry, "namespace")
+    source: Any = entry.get("source")
     if check_source(where, source) != "path":
         raise HubError(f"{where}: event packages are curated, a `path` source")
     return str(source["path"])
 
 
-def check_module_entry(index: int, entry: Any) -> str:
-    """The name of the `index`-th (from 0) [[module]] entry, once its name and
-    huri_core range are checked (its source is check_source's); HubError when
-    either is malformed."""
+def check_module_entry(index: int, entry: Any, seen: Optional[Set[str]] = None) -> str:
+    """The name of the `index`-th (from 0) [[module]] entry, once its name,
+    huri_core range and `verified` date are checked (its source is
+    check_source's); HubError when one is malformed. With `seen`, the names of
+    the entries before it: its name is added there, and is an error if it is
+    already (a module is listed once)."""
     name = entry.get("name") if isinstance(entry, dict) else None
     if not isinstance(name, str) or not name:
         raise HubError(f"registry module #{index + 1} has no `name`")
+    where = f"registry entry {name!r}"
+    if seen is not None:
+        if name in seen:
+            raise HubError(f"{where}: listed twice")
+        seen.add(name)
     huri_core = entry.get("huri_core")
     if huri_core is not None:
         try:
             SpecifierSet(str(huri_core))
         except InvalidSpecifier as e:
-            raise HubError(
-                f"registry entry {name!r}: invalid huri_core range {huri_core!r}"
-            ) from e
+            raise HubError(f"{where}: invalid huri_core range {huri_core!r}") from e
+    if not isinstance(entry.get("verified"), dt.date):
+        raise HubError(f"{where}: 'verified' must be a date (YYYY-MM-DD)")
     return name
 
 
@@ -351,8 +374,9 @@ def read_registry(
     ]
 
     modules = []
+    names: Set[str] = set()
     for i, entry in enumerate(registry.get("module", [])):
-        name = check_module_entry(i, entry)
+        name = check_module_entry(i, entry, names)
         source = entry.get("source", {})
         install, where = _install_target(name, source, checkout, ref)
         modules.append(

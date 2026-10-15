@@ -42,14 +42,13 @@ server.
 """
 
 import argparse
-import datetime as dt
 import os
 import subprocess
 import sys
 import tomllib
 from importlib.metadata import entry_points
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from huri_hub.registry import (
     check_events_entry,
@@ -92,8 +91,9 @@ def _norm(name: str) -> str:
 
 def load(registry_path: Path) -> Dict[str, Any]:
     """The registry, through huri-hub's reader; HubError when `huri hub`
-    could not read it (not TOML, another schema)."""
-    return parse(registry_path.read_text(), str(registry_path))
+    could not read it (not TOML, another schema) or when it does not say its
+    schema (`huri hub` assumes its own, CI does not)."""
+    return parse(registry_path.read_text(), str(registry_path), require_schema=True)
 
 
 def _git(directory: Path, *args: str) -> Optional[str]:
@@ -258,34 +258,30 @@ def check(
         except HubError as e:
             problems.append(str(e))
             continue
-        where = f"events {entry.get('package')!r}"
+        where = f"events {entry['package']!r}"
         if not (package / "pyproject.toml").is_file():
             problems.append(f"{where}: no package at source {package}")
             continue
         if _norm(_pyproject(package)["name"]) != _norm(entry["package"]):
             problems.append(f"{where}: {package} is {_pyproject(package)['name']}")
-        owner = namespace_owner.get(entry.get("namespace", ""))
+        owner = namespace_owner.get(entry["namespace"])
         if owner != _norm(entry["package"]):
             problems.append(
-                f"{where}: namespace {entry.get('namespace')!r} is registered by "
+                f"{where}: namespace {entry['namespace']!r} is registered by "
                 f"{owner or 'no installed package'}"
             )
 
-    listed: Dict[str, Dict[str, Any]] = {}
-    checked: List[str] = []  # listed and with a package at hand
+    # Names of the module entries, also of those huri-hub's schema refuses:
+    # such an entry is reported once, as malformed, not as missing too.
+    listed: Set[str] = set()
+    checked: List[str] = []  # listed, well-formed and with a package at hand
     for i, entry in enumerate(registry.get("module", [])):
         try:
-            name = check_module_entry(i, entry)
+            name = check_module_entry(i, entry, listed)
         except HubError as e:
             problems.append(str(e))
             continue
         where = f"module {name!r}"
-        if name in listed:
-            problems.append(f"{where}: listed twice")
-            continue
-        listed[name] = entry
-        if not isinstance(entry.get("verified"), dt.date):
-            problems.append(f"{where}: 'verified' must be a date (YYYY-MM-DD)")
         source = source_dir(entry.get("source"), where, repo, problems, skipped)
         if source is None:
             continue
@@ -329,7 +325,11 @@ def check(
                 )
 
     curated = set()
-    events_listed = {_norm(str(e.get("package"))) for e in registry.get("events", [])}
+    events_listed = {
+        _norm(str(e.get("package")))
+        for e in registry.get("events", [])
+        if isinstance(e, dict)
+    }
     for path in sorted((repo / "packages").glob("*/pyproject.toml")):
         project = _pyproject(path.parent)
         provides = project.get("entry-points", {})
@@ -347,7 +347,7 @@ def check(
             f"packages/{path.parent.name} provides no module and no event, and is "
             "not a known library or tool (check_registry.UNLISTED)"
         )
-    for name in sorted(curated - set(listed)):
+    for name in sorted(curated - listed):
         problems.append(f"curated module {name!r} (packages/) is not in the registry")
 
     try:

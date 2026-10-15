@@ -29,6 +29,7 @@ name = "stt"
 package = "huri-module-stt"
 summary = "Speech to text"
 huri_core = ">=0.4.0.dev0,<0.5"
+verified = 2026-10-12
 source = { path = "packages/huri-module-stt" }
 
 [[module]]
@@ -36,6 +37,7 @@ name = "lights"
 package = "huri-module-lights"
 summary = "Mood lighting, a verified third-party module"
 huri_core = ">=0.4.0.dev0,<0.5"
+verified = 2026-10-12
 [module.source]  # pinned as a git submodule of huri-modules, at the same tag
 git = "https://github.com/acme/huri-lights"
 tag = "0.2.0"
@@ -403,6 +405,7 @@ TTS_ENTRY = """
 name = "tts"
 package = "huri-module-tts-piper"
 huri_core = ">=0.4.0.dev0,<0.5"
+verified = 2026-10-12
 source = { path = "packages/huri-module-tts-piper" }
 """
 
@@ -512,15 +515,62 @@ def test_another_registry_url_names_the_ref_curated_packages_come_from(capsys):
             'submodule = "modules/x", subdirectory = "" }',
             "'empty': every `source` value must be a non-empty string",
         ),
+        (
+            'name = "undated"\nverified = "yesterday"\n'
+            'source = { path = "packages/x" }',
+            "'undated': 'verified' must be a date (YYYY-MM-DD)",
+        ),
+        (
+            'name = "stt"\nverified = 2026-10-12\nsource = { path = "packages/x" }',
+            "registry entry 'stt': listed twice",
+        ),
     ],
 )
 def test_a_malformed_registry_entry_is_a_readable_error(capsys, tmp_path, entry, error):
+    if "verified" not in entry:
+        entry = f"verified = 2026-10-12\n{entry}"
     text = REGISTRY_TEXT + f"\n[[module]]\n{entry}\n"
     (tmp_path / "registry.toml").write_text(text)
     argv = ["list", "--no-crawl", "--registry", str(tmp_path / "registry.toml")]
     assert cli.main(argv, fetch=fetch) == 1
     err = capsys.readouterr().err
     assert error in err and "Traceback" not in err
+
+
+@pytest.mark.parametrize(
+    "entry, error",
+    [
+        (
+            'namespace = "acme"\nsource = { path = "packages/acme-events" }',
+            "registry events '#2': `package` must be a non-empty string",
+        ),
+        (
+            'package = "acme-events"\nsource = { path = "packages/acme-events" }',
+            "registry events 'acme-events': `namespace` must be a non-empty string",
+        ),
+        (
+            'package = "acme-events"\nnamespace = "acme"\n'
+            'source = { git = "https://x", tag = "1", submodule = "modules/x" }',
+            "'acme-events': event packages are curated, a `path` source",
+        ),
+    ],
+)
+def test_a_malformed_events_entry_is_a_readable_error(capsys, tmp_path, entry, error):
+    text = REGISTRY_TEXT + f"\n[[events]]\n{entry}\n"
+    (tmp_path / "registry.toml").write_text(text)
+    argv = ["list", "--no-crawl", "--registry", str(tmp_path / "registry.toml")]
+    assert cli.main(argv, fetch=fetch) == 1
+    err = capsys.readouterr().err
+    assert error in err and "Traceback" not in err
+
+
+def test_a_registry_without_schema_is_read_as_this_one():
+    # Lenient for `huri hub`; huri-modules' CI requires the key.
+    text = REGISTRY_TEXT.replace("schema = 1\n", "")
+    assert "schema" not in text
+    assert reg.parse(text, "r.toml")["module"][0]["name"] == "stt"
+    with pytest.raises(web.HubError, match="missing `schema`"):
+        reg.parse(text, "r.toml", require_schema=True)
 
 
 def test_a_newer_registry_schema_is_a_readable_error(capsys, tmp_path):

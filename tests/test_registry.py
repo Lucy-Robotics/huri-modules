@@ -95,7 +95,44 @@ def test_the_schema_is_huri_hubs(check):
     text = REGISTRY.read_text().replace(
         'huri_core = ">=0.4.0.dev0,<0.5"', 'huri_core = "bogus"', 1
     )
-    assert any("invalid huri_core range 'bogus'" in p for p in check(text))
+    # Reported once, as malformed: the entry is there, not missing.
+    problems = check(text)
+    assert len(problems) == 1, problems
+    assert "invalid huri_core range 'bogus'" in problems[0]
+
+
+def test_the_schema_key_is_required(check):
+    # `huri hub` reads a registry without it as its own schema; CI does not.
+    text = REGISTRY.read_text()
+    assert text.startswith("schema = 1\n") or "\nschema = 1\n" in text
+    problems = check(text.replace("schema = 1\n", "", 1))
+    assert len(problems) == 1 and problems[0].endswith("missing `schema` (expected 1)")
+
+
+def test_a_module_listed_twice(check):
+    text = REGISTRY.read_text()
+    start = text.index("[[module]]")
+    end = text.index("[[module]]", start + 1)
+    problems = check(text + "\n" + text[start:end])
+    assert len(problems) == 1 and problems[0].endswith(": listed twice"), problems
+
+
+@pytest.mark.parametrize(
+    "key,fragment",
+    [
+        ("package", "`package` must be a non-empty string"),
+        ("namespace", "`namespace` must be a non-empty string"),
+    ],
+)
+def test_a_malformed_events_entry_is_reported(check, key, fragment):
+    text = REGISTRY.read_text()
+    start = text.index("[[events]]")
+    end = text.index("[[module]]")
+    entry = "\n".join(
+        line for line in text[start:end].splitlines() if not line.startswith(key)
+    )
+    problems = check(text[:start] + entry + "\n\n" + text[end:])
+    assert any(fragment in p for p in problems), problems
 
 
 def test_every_package_is_listed_or_a_known_library_or_tool(check, monkeypatch):
