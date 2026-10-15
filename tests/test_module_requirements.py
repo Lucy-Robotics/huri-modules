@@ -111,6 +111,12 @@ def test_cli_exits_2_with_the_reason(tmp_path, capsys):
     assert "transformers==4.46.3" in out.read_text()
 
 
+def test_the_hub_and_the_libraries_are_not_modules():
+    providers = {package.distribution for package in mr.module_packages(ROOT).values()}
+    assert {"huri-hub", "huri-tts", "huri-events"}.isdisjoint(providers)
+    assert all(mr.INTERNAL.match(name) for name in ("huri-hub", "huri_hub"))
+
+
 def test_parser_without_tomllib_reads_the_same(monkeypatch):
     """Python 3.10 has no tomllib: the fallback parser must agree on every package."""
     expected = {p.name: mr.read_pyproject(p) for p in (ROOT / "packages").iterdir()}

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs HuRI into an image: huri-core from its repository at a git ref, plus
 # every distribution under packages/ (the curated events and modules) from the
-# build context.
+# build context, except huri-hub.
 #
 #   install_huri.sh SRC_DIR [HURI_CORE_REF]
 #
@@ -17,6 +17,10 @@
 # its heavy dependencies lazily), while HURI_MODULES and the Serve config
 # decide what actually runs where.
 #
+# huri-hub (`huri hub`) is left out: it pip-installs modules on a workstation,
+# while an image runs the modules baked into it at build time, and a pod that
+# installed more at runtime would drift from its image.
+#
 # The build fails here, rather than at deploy time, if a module or event does
 # not load or the installed versions do not fit together.
 set -eu
@@ -26,9 +30,14 @@ ref="${2:-}"
 [ -n "$ref" ] || { echo "install_huri.sh: no huri-core ref" >&2; exit 1; }
 echo "huri-core: git ref $ref"
 
+set --
+for pkg in "$src"/packages/*/; do
+  case "$pkg" in */packages/huri-hub/) continue ;; esac
+  set -- "$@" "$pkg"
+done
 pip install --no-cache-dir --no-deps \
   "huri-core @ git+https://github.com/Lucy-Robotics/huri-core.git@$ref" \
-  "$src"/packages/*/
+  "$@"
 
 python - <<'PY'
 from huri_core.core.compat import check_manifests, check_modules

@@ -25,8 +25,8 @@
 # https://github.com/Lucy-Robotics/huri-core at the git ref in HURI_CORE_REF (a
 # file at the repository root; the HURI_CORE_REF environment variable overrides
 # it), or editable from a local checkout given as HURI_CORE_PATH=/path/to/huri-core.
-# The curated events and modules (packages/*) and the reference CLI
-# (examples/cli) are installed editable from this checkout.
+# The curated events and modules (packages/*, with huri-hub: `huri hub`) and the
+# reference CLI (examples/cli) are installed editable from this checkout.
 #
 # Everything it generates lives in .huri-local/ plus config/*.generated.yaml,
 # so the install is inspectable and removable (`rm -rf .huri-local`).
@@ -1531,7 +1531,9 @@ install_python_deps() {
   fi
   # The curated events and modules: one distribution each under packages/,
   # registering them through entry points, which is how the server finds them.
-  # Their dependencies come from the requirement files installed above.
+  # Their dependencies come from the requirement files installed above. The
+  # glob also installs huri-hub, the `huri hub` command (light: packaging, which
+  # huri-core's [server] extra brings), so modules can be found and added later.
   local pkg
   for pkg in "$REPO_ROOT"/packages/*/; do
     run "$PIP" install "${C[@]}" --no-deps -e "$pkg"

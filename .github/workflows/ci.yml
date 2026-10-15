@@ -134,7 +134,8 @@ jobs:
         run: |
           mypy --check-untyped-defs --follow-imports=silent \
             packages/huri-events/huri_events examples/cli/huri_cli packages/huri-tts/huri_tts \
-            packages/huri-module-vad/huri_vad packages/huri-module-stt/huri_stt packages/huri-module-tag/huri_tag check_registry.py
+            packages/huri-module-vad/huri_vad packages/huri-module-stt/huri_stt packages/huri-module-tag/huri_tag \
+            packages/huri-hub/huri_hub check_registry.py
 
   plan:
     name: installer plan (${{ matrix.name }})

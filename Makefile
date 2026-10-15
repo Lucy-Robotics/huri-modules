@@ -5,7 +5,7 @@ LINT_PATHS = packages examples tests check_registry.py scripts
 MYPY_PATHS = packages/huri-events/huri_events examples/cli/huri_cli \
 	packages/huri-tts/huri_tts packages/huri-module-vad/huri_vad \
 	packages/huri-module-stt/huri_stt packages/huri-module-tag/huri_tag \
-	check_registry.py
+	packages/huri-hub/huri_hub check_registry.py
 
 # mypy reads huri-core's types from the installed package (it ships py.typed),
 # but cannot see an editable install made by setuptools' import hook: with
