@@ -248,6 +248,8 @@ jobs:
             canary: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true # verified third-party modules (modules/*)
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -270,14 +272,20 @@ jobs:
           echo "huri-core at $ref"
           pip install -c constraints.txt \
             "huri-core[server,client,dev] @ git+https://github.com/Lucy-Robotics/huri-core.git@$ref"
-      - name: install the curated events and modules, and the CLI
+      - name: install the curated events and modules, the CLI, and the verified third-party modules
         # Registers the modules and events (entry points) — HuRI finds them there.
+        # A third-party module brings its own dependencies; the curated ones
+        # come from the requirement files above.
         run: |
           pip install --no-deps -e examples/cli
           for pkg in packages/*/; do pip install --no-deps -e "$pkg"; done
+          for mod in modules/*/; do
+            if [ -f "$mod/pyproject.toml" ]; then pip install -c constraints.txt -e "$mod"; fi
+          done
       - run: pytest -q
-      - name: the curated-module registry matches its packages
-        run: python check_registry.py
+      - name: the registry matches its packages, and their own tests pass
+        # --strict: every third-party submodule must be checked out, at its tag.
+        run: python check_registry.py --strict --run-tests
       - name: the shipped client configs load through the real loader
         # Stricter than the `configs` job: this exercises ClientConfig.from_dict
         # and the sender/hook/module dataclasses, not just YAML syntax.
