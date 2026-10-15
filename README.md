@@ -1,6 +1,6 @@
 # huri-modules
 
-The one repository to clone to try or deploy [HuRI](https://github.com/Lucy-Robotics/HuRI),
+The one repository to clone to try or deploy [HuRI](https://github.com/Lucy-Robotics/HuRI-landing),
 the open-source conversational pipeline for humanoid robots and virtual avatars:
 speech to text, retrieval-augmented answers from an LLM, emotion, speech
 synthesis and co-speech gestures, served to many clients (robots) at once by a
@@ -149,14 +149,25 @@ rejected with a `session_error` naming both sets.
 
 Each has its own `pyproject.toml` (and version), `huri_module.toml` manifest(s),
 tests and, for GPU modules, `requirements-{nvidia,amd}.txt`. Without a checkout,
-one installs from this repository at a release tag with `#subdirectory=`:
+one installs from this repository at a release tag with `#subdirectory=`. None
+of huri-core, huri-events and huri-tts is on PyPI, so a module's HuRI
+dependencies go on the same pip command line, from git, and pip never looks
+them up on an index:
 
 ```sh
-pip install "huri-events @ git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=packages/huri-events"
-pip install "huri-module-stt @ git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=packages/huri-module-stt"
+ref=0.1.0   # a huri-modules release tag
+core=0.4.0  # the huri-core ref in that release's HURI_CORE_REF file
+pip install \
+  "huri-core[server] @ git+https://github.com/Lucy-Robotics/huri-core.git@$core" \
+  "huri-events @ git+https://github.com/Lucy-Robotics/huri-modules.git@$ref#subdirectory=packages/huri-events" \
+  "huri-module-stt @ git+https://github.com/Lucy-Robotics/huri-modules.git@$ref#subdirectory=packages/huri-module-stt"
 ```
 
-`huri hub install stt` does the same for any module of the registry.
+The TTS modules also need `huri-tts` (`#subdirectory=packages/huri-tts`); each
+package's README has its full command. `huri hub install stt`, from an
+installed huri-core, does the same for any module of the registry: it installs
+the module with huri-events (and huri-tts for a TTS module) from git, in one
+pip command, at the huri-modules ref it reads the registry from.
 
 ## Versions and compatibility
 
@@ -164,8 +175,9 @@ This repository has its own semver, tagged `X.Y.Z` (no `v`) on `main`; `dev`
 is the integration branch. A release is a tested set: every package of
 `packages/` at its own version, plus the huri-core ref in
 [`HURI_CORE_REF`](HURI_CORE_REF) they were all tested against — a core release
-tag on `main`, `dev` on `dev`. The installer, the Docker images and CI all read
-that one file.
+tag on `main`; on `dev`, that tag too, or huri-core's `dev` while the modules
+follow the next core minor (with their ranges moved to it in the same change).
+The installer, the Docker images and CI all read that one file.
 
 | huri-modules | huri-core |
 |---|---|
@@ -173,7 +185,8 @@ that one file.
 
 CI tests every change against the pinned core (blocking) and against
 huri-core's `dev` branch (non-blocking), so a breaking core change shows up
-before it is released. [RELEASING.md](RELEASING.md) has the policy and the
+before it is released (that canary is red by design between a core minor
+release and the change that moves the modules to the next minor). [RELEASING.md](RELEASING.md) has the policy and the
 release checklist.
 
 To develop huri-core and the modules together, point the installer at a local
@@ -190,6 +203,11 @@ huri-core from git at the `HURI_CORE_REF` build arg (default: the
 and modules: the head node imports each enabled module to build the app), and
 **fails the build** if a module or event does not load or the versions do not
 satisfy the modules' manifests.
+
+When `HURI_CORE_REF` is a branch (`dev`), Docker's layer cache keeps the core
+of the first build: pass the commit it is at instead,
+`--build-arg HURI_CORE_REF="$(git ls-remote https://github.com/Lucy-Robotics/huri-core.git refs/heads/dev | cut -f1)"`,
+or build with `--no-cache`. A release tag does not move, so it needs neither.
 
 ```sh
 docker build -f deploy/Dockerfile.base --build-arg HURI_CORE_REF="$(cat HURI_CORE_REF)" -t huri:base .
@@ -312,7 +330,7 @@ then restart (`.huri-local/stop.sh && .huri-local/start.sh`).
 | `torch sees the GPU but cannot launch a kernel on it`          | The torch build has no code objects for your GPU. `--only config` sets `HSA_OVERRIDE_GFX_VERSION` when a compatible same-family arch exists; otherwise run CPU-only. |
 | Client exits with `session_error: Unknown module 'x'`          | The client config lists a module the server did not register. Match it to `HURI_MODULES`, or regenerate both with `--only config`.                                   |
 | Client exits with `session_error: Module 'x' is installed but not enabled` | The server's `HURI_MODULES` does not list it (unset enables nothing). Add it there, or drop it from the client config. |
-| The server refuses to start: the installed `huri-core` is not in a module's range | The core in the venv is not the one this checkout is tested with. `./install.sh --only python` reinstalls `HURI_CORE_REF`; or check out the huri-modules release matching your core (see [Versions](#versions-and-compatibility)). |
+| The server refuses to start: the installed `huri-core` is not in a module's range | The core in the venv is not the one this checkout is tested with. `./install.sh --only python` reinstalls huri-core at the commit `HURI_CORE_REF` names now (a branch such as `dev` included); or check out the huri-modules release matching your core (see [Versions](#versions-and-compatibility)). |
 | `qdrant is not answering … HuRI does not manage this instance` | Something else already owned the port when you installed, so HuRI never created its own. Start it yourself, or free the port and re-run `--only services`.           |
 | No audio from the client                                       | Check TTS is actually enabled (`grep HURI_MODULES config/huri_local.generated.yaml`) — with `--modules` or a dropped plan there may be no TTS at all.                |
 | Install fails with no explanation                              | Every command's output is in `.huri-local/install.log`, and the error line names the real command.                                                                   |
@@ -384,25 +402,35 @@ extras so a client never installs Ray or FastAPI; the curated packages install
 from this repository with `#subdirectory=`:
 
 ```sh
-pip install "huri-core[client] @ git+https://github.com/Lucy-Robotics/huri-core.git@<ref>"     # client SDK only
-pip install "huri-core[server] @ git+https://github.com/Lucy-Robotics/huri-core.git@<ref>"     # server
-pip install "huri-events @ git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=packages/huri-events"
-pip install "huri-cli @ git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=examples/cli"
+ref=0.1.0   # a huri-modules release tag
+core=0.4.0  # the huri-core ref in that release's HURI_CORE_REF file
+CORE="git+https://github.com/Lucy-Robotics/huri-core.git@$core"
+MODS="git+https://github.com/Lucy-Robotics/huri-modules.git@$ref"
+# a client: the SDK, the curated topics and the reference CLI (no Ray)
+pip install "huri-core[client] @ $CORE" \
+  "huri-events @ $MODS#subdirectory=packages/huri-events" \
+  "huri-cli @ $MODS#subdirectory=examples/cli"
+# a server: Ray Serve + FastAPI, then the modules (see each package's README)
+pip install "huri-core[server] @ $CORE" \
+  "huri-events @ $MODS#subdirectory=packages/huri-events"
 ```
 
-Use release tags for `<ref>`, a huri-core `0.4.x` with a huri-modules `0.1.x`
-(see [Versions](#versions-and-compatibility)); without a ref pip takes the
-repository's default branch. `[server]` is Ray Serve + FastAPI and the pins that
+huri-core, huri-events, huri-tts and huri-cli are not on PyPI: always give them
+as git URLs on the same command line as what depends on them, so pip never
+looks them up on an index. Use release tags, a huri-core `0.4.x` with a
+huri-modules `0.1.x` (see [Versions](#versions-and-compatibility)); without a
+ref pip takes the repository's default branch. `[server]` is Ray Serve + FastAPI and the pins that
 keep them working; each module package declares its own dependencies, and the
 GPU ones ship `requirements-{nvidia,amd}.txt` pins next to it.
 
 ## Testing
 
 ```sh
-make lint                              # black, isort, flake8, mypy
+make lint                              # black, isort, flake8, mypy (as CI; `make format` fixes the first two)
 make test                              # pytest: tests/ and packages/*/tests
 make check                             # both
 python check_registry.py --run-tests   # the registry against its packages
+python scripts/check_links.py          # the pages' relative links and anchors
 scripts/test_install.sh                # the installer in clean Ubuntu containers
 ```
 
@@ -449,8 +477,9 @@ See [`packages/huri-module-stt/tests/test_stt.py`](packages/huri-module-stt/test
 - **HURI_CORE_REF** — the huri-core ref this repository is built and tested
   against; **RELEASING.md** — versions and releases
 - **install.sh**, **scripts/** — the local installer (`install_local.sh`), the
-  per-hardware requirement merger (`module_requirements.py`) and the installer
-  portability test (`test_install.sh`)
+  per-hardware requirement merger (`module_requirements.py`), the installer
+  portability test (`test_install.sh`) and the pages' link check
+  (`check_links.py`)
 - **config/** — Serve configs and client configs (`client_*.yaml`)
 - **deploy/** — the Docker images, `install_huri.sh`, a session smoke test and
   Helm values examples (`deploy/examples`); **helm/** — the KubeRay chart
@@ -564,8 +593,10 @@ source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0", sub
 ### Adding a verified third-party module
 
 A third-party module stays in its author's repository; this repository pins
-the reviewed tag of it as a git submodule, so what is verified is exactly what
-is installed:
+the reviewed tag of it as a git submodule. CI checks that the submodule comes
+from the entry's `git` URL (in `.gitmodules`) and is at the commit the entry's
+`tag` names in that repository, which is what `huri hub install` installs
+(`git+<git>@<tag>`); a tag the author moves afterwards fails the next CI run:
 
 ```sh
 git submodule add https://github.com/acme/huri-module-servo modules/servo
@@ -576,9 +607,13 @@ git add .gitmodules modules/servo
 Then add its `[[module]]` entry to `registry.toml` — the `name`, `package`,
 `summary`, `huri_core` and `verified` keys of [ACCEPTANCE.md](ACCEPTANCE.md), and
 `source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0", submodule = "modules/servo" }`
-— install it (`pip install -e modules/servo`) and run
-`python check_registry.py --run-tests --strict`: with its submodule checked out,
-the entry is checked like a curated one, and the checkout must be at `tag`.
+— install it (`pip install -e modules/servo`, or
+`pip install -e modules/servo/<subdirectory>` when the entry has one;
+`python check_registry.py --install-dirs` prints those directories, which is
+what CI installs) and run `python check_registry.py --run-tests --strict`: with
+its submodule checked out, the entry is checked like a curated one, and the
+checkout must be at the commit of `tag` in the entry's repository (this reads
+its tags with `git ls-remote`, so it needs the network).
 Bumping it later is the same pull request with a new tag
 (`git -C modules/servo checkout 0.2.0` and `tag = "0.2.0"`).
 
@@ -625,7 +660,7 @@ A client YAML (`config/client_*.yaml`) holds the same three things — `modules`
 
 ## More
 
-- [HuRI](https://github.com/Lucy-Robotics/HuRI) — where to start, the
+- [HuRI](https://github.com/Lucy-Robotics/HuRI-landing) — where to start, the
   architecture and how to contribute
 - [huri-core](https://github.com/Lucy-Robotics/huri-core) — the framework, its
   public surface and its releases

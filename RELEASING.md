@@ -25,14 +25,19 @@ package):
 
 Packages pin huri-core with a range of one minor version: today
 `huri-core>=0.4.0.dev0,<0.5` (in each `pyproject.toml`, `huri_module.toml` and
-`registry.toml` entry), which becomes `>=0.4,<0.5` once huri-core `0.4.0` is
-tagged (step 1 of the checklist below).
+`registry.toml` entry, and in `examples/cli/pyproject.toml`), which becomes
+`>=0.4,<0.5` once huri-core `0.4.0` is tagged (step 1 of the checklist below).
+The range and `HURI_CORE_REF` always move together: a range that does not
+contain the core `HURI_CORE_REF` installs fails the tests, the image builds
+(`deploy/install_huri.sh` checks the manifests) and the server's startup.
 
 ### HURI_CORE_REF
 
 One line, a git ref of [huri-core](https://github.com/Lucy-Robotics/huri-core):
-the core this repository is built and tested against. `dev` on the `dev`
-branch, a release tag (`0.4.0`) on `main`. Everything reads it:
+the core this repository is built and tested against. A release tag (`0.4.0`)
+on `main`; on `dev`, the same tag, or huri-core's `dev` while work on the next
+core minor is under way (see step 5 below). Before the first release it is
+`dev`, against core `0.4.0.dev0`. Everything reads it:
 
 - `./install.sh` installs `huri-core[server,client]` from git at that ref
   (`HURI_CORE_REF=<ref>` in the environment overrides the file;
@@ -42,7 +47,11 @@ branch, a release tag (`0.4.0`) on `main`. Everything reads it:
   the file (`docker build --build-arg HURI_CORE_REF="$(cat HURI_CORE_REF)" ...`);
 - CI installs it for the blocking test job, and runs the same tests against
   huri-core `dev` as a non-blocking canary, so a breaking core change is seen
-  here before core releases it.
+  here before core releases it. Once core has released `X.Y.0` and bumped its
+  `dev` to `X.(Y+1).0.dev0`, the canary is **red by design** (core `dev` is
+  outside every module's `>=X.Y,<X.(Y+1)` range) until the pull request of
+  step 5 widens the ranges; in that window, read its log for failures other
+  than the range checks.
 
 ### Compatibility
 
@@ -66,10 +75,11 @@ after the huri-core release they target is tagged:
 1. On `dev`, open a release PR that:
    - sets `HURI_CORE_REF` to the huri-core release tag (`0.4.0`);
    - if huri-core's minor changed, moves every range to the new minor: the
-     `huri-core` dependency of each `pyproject.toml` under `packages/`, the
-     `huri_core` key of each `huri_module.toml` and of each
-     `registry.toml` entry (they must agree, `check_registry.py` checks it);
-     for the first release, `>=0.4.0.dev0,<0.5` becomes `>=0.4,<0.5`;
+     `huri-core` dependency of each `pyproject.toml` under `packages/` and of
+     `examples/cli/pyproject.toml`, the `huri_core` key of each
+     `huri_module.toml` and of each `registry.toml` entry (they must agree,
+     `check_registry.py` checks it); for the first release,
+     `>=0.4.0.dev0,<0.5` becomes `>=0.4,<0.5`;
    - bumps the version of every package that changed since the last release;
    - updates the compatibility table (here and in README.md).
 2. CI must be green on that PR: lint, `check_registry.py`, every package's
@@ -79,8 +89,15 @@ after the huri-core release they target is tagged:
    `gpu_images`).
 3. Merge it, then merge `dev` into `main` with a PR named `Release X.Y.Z`.
 4. Tag `main`'s merge commit `X.Y.Z` and push the tag.
-5. On `dev`, set `HURI_CORE_REF` back to `dev` if the next changes should
-   follow huri-core's development branch (they usually should).
+5. On `dev`, leave `HURI_CORE_REF` at the released core tag. Do **not** set
+   it back to `dev` on its own: core `dev` is bumped to the next minor's
+   `.dev0` right after a core release, which is outside the `>=X.Y,<X.(Y+1)`
+   ranges, so CI, the image builds and `./install.sh` would all fail. When work
+   starts on the next core minor, one pull request sets `HURI_CORE_REF` to
+   `dev` **and** moves every range to `>=X.(Y+1).0.dev0,<X.(Y+2)` (each package
+   `pyproject.toml`, `examples/cli/pyproject.toml`, each `huri_module.toml` and
+   each `registry.toml` entry, in agreement). Until that pull request merges,
+   the `dev canary` CI job is red by design.
 
 A patch release (`0.1.1`) is the same without step 1's range changes: fixes
 only, against the same huri-core minor.
@@ -94,7 +111,8 @@ is its author's; what this repository pins is the reviewed tag:
 
 - bumping it is a pull request that checks out the new tag in the submodule and
   sets the entry's `tag` to it; CI checks the entry again (`check_registry.py`
-  verifies the checkout is at `tag`);
+  verifies that `.gitmodules` points at the entry's `git` URL and that the
+  checkout is at the commit `tag` names there);
 - on a huri-core minor release, the release PR re-checks every listed module
   against the new core: entries whose `huri_core` range does not include it are
   bumped to a tag that supports it, or delisted in the same release

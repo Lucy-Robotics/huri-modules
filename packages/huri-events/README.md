@@ -14,10 +14,16 @@ pip install "huri-core[client] @ git+https://github.com/Lucy-Robotics/huri-core.
   ./packages/huri-events
 ```
 
-A self-contained distribution of
+A distribution of
 [huri-modules](https://github.com/Lucy-Robotics/huri-modules), versioned in its
-`pyproject.toml` (see RELEASING.md there). Without a checkout:
+`pyproject.toml` (see RELEASING.md there). It depends on `huri-core`, which is
+not on PyPI: without a checkout, install it from git in the same pip command,
+so pip never looks it up on an index:
 
 ```sh
-pip install "huri-events @ git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=packages/huri-events"
+ref=0.1.0   # a huri-modules release tag
+core=0.4.0  # the huri-core ref in that release's HURI_CORE_REF file
+pip install \
+  "huri-core @ git+https://github.com/Lucy-Robotics/huri-core.git@$core" \
+  "huri-events @ git+https://github.com/Lucy-Robotics/huri-modules.git@$ref#subdirectory=packages/huri-events"
 ```
