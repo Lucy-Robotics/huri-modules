@@ -21,6 +21,10 @@ in [`packages/`](../packages).
   `git submodule update --init` in an existing clone. Without it these folders
   are empty, and `check_registry.py` skips their entries (`--strict` fails).
 
-`check_registry.py` checks that each checked-out submodule is at its entry's
-`tag`; `huri hub install <name>` installs it from `git+<repository URL>@<tag>`,
-never from this folder.
+`check_registry.py` checks that each checked-out submodule comes from its
+entry's repository URL (`.gitmodules`) and is at the commit its entry's `tag`
+names there (`git ls-remote`); `huri hub install <name>` installs it from
+`git+<repository URL>@<tag>`, never from this folder. To install the checked-out
+ones for a local check, `pip install -e` each directory that
+`python check_registry.py --install-dirs` prints (`modules/<name>`, or
+`modules/<name>/<subdirectory>` when the entry has one).

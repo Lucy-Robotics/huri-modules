@@ -15,7 +15,12 @@ see README.md, "Adding a verified third-party module").
 
 CI (`check_registry.py --run-tests --strict`) checks the mechanical part:
 
-- a third-party submodule is checked out at the entry's `tag`;
+- a third-party submodule is registered in `.gitmodules` with the entry's
+  `git` URL, and is checked out at the commit the entry's `tag` names in that
+  repository (read with `git ls-remote`): the commit reviewed and tested here
+  is the one `huri hub install` gets from `git+<git>@<tag>`, as long as the
+  author does not move the tag (the next CI run on this repository reports a
+  moved tag);
 - the package installs and provides the module under the listed name;
 - it ships a `huri_module.toml` whose `summary` and `huri_core` match the entry;
 - HuRI's startup checks pass against the pinned `huri-core` (`HURI_CORE_REF`)

@@ -2,6 +2,7 @@
 """Check registry.toml against the packages it lists (run by CI on every change).
 
     python check_registry.py [--run-tests] [--strict]
+    python check_registry.py --install-dirs
 
 For each listed module: its package is where `source` says, provides the module
 under that name, ships a manifest that agrees with the entry, passes HuRI's
@@ -18,15 +19,24 @@ A `source` is one of two kinds:
                # optional: subdirectory = "<dir in that repository>"
 
 A third-party entry is checked like a curated one when its submodule is checked
-out (`git submodule update --init`), and its checkout must then be at `tag`. A
+out (`git submodule update --init`). Its submodule must then be registered in
+.gitmodules with the entry's `git` URL, and its checkout must be at the commit
+that `tag` names in that repository, read with `git ls-remote <git>` (needs the
+network; a shallow submodule checkout carries no tags). `huri hub` installs
+`git+<git>@<tag>`, so this ties what is checked here to what it installs. A
 submodule that is not checked out is skipped and named; --strict makes it a
 problem.
+
+--install-dirs prints the package directory of each checked-out third-party
+entry (`modules/<name>[/<subdirectory>]`), one per line, for CI to
+`pip install -e` them; it checks nothing else.
 
 Needs the listed packages installed (pip install -e), like the server.
 """
 
 import argparse
 import datetime as dt
+import os
 import subprocess
 import sys
 import tomllib
@@ -73,11 +83,18 @@ def _git(directory: Path, *args: str) -> Optional[str]:
 
 
 def source_dir(
-    source: Any, where: str, repo: Path, problems: List[str], skipped: List[str]
+    source: Any,
+    where: str,
+    repo: Path,
+    problems: List[str],
+    skipped: List[str],
+    verify: bool = True,
 ) -> Optional[Path]:
     """The directory holding the entry's package, or None when it cannot be
-    checked: a malformed source (added to `problems`) or a third-party
-    submodule that is not checked out (added to `skipped`)."""
+    checked: a malformed source or a submodule that is not the reviewed one
+    (added to `problems`) or a third-party submodule that is not checked out
+    (added to `skipped`). `verify=False` skips the checks against .gitmodules
+    and the remote tag."""
     if not isinstance(source, dict):
         problems.append(f"{where}: 'source' must be a table")
         return None
@@ -113,15 +130,99 @@ def source_dir(
     if not (checkout / ".git").exists():
         skipped.append(f"{where}: submodule {submodule} is not checked out")
         return None
+    package = checkout / str(source.get("subdirectory", "."))
+    if not verify:
+        return package
+
+    url = _gitmodules_url(repo, submodule)
+    if url is None:
+        problems.append(f"{where}: {submodule} is not a submodule in .gitmodules")
+        return None
+    if not _same_repo(url, source["git"]):
+        problems.append(
+            f"{where}: .gitmodules points {submodule} at {url}, not {source['git']}"
+        )
+        return None
     head = _git(checkout, "rev-parse", "HEAD")
-    tagged = _git(checkout, "rev-parse", f"refs/tags/{source['tag']}^{{commit}}")
+    tagged = remote_tag(source["git"], source["tag"])
     if tagged is None:
-        problems.append(f"{where}: {submodule} has no tag {source['tag']!r}")
+        problems.append(f"{where}: cannot list the tags of {source['git']}")
+        return None
+    if not tagged:
+        problems.append(f"{where}: {source['git']} has no tag {source['tag']!r}")
         return None
     if head != tagged:
-        problems.append(f"{where}: {submodule} is not at tag {source['tag']!r}")
+        problems.append(
+            f"{where}: {submodule} is at {(head or '?')[:12]}, but tag "
+            f"{source['tag']!r} of {source['git']} is {tagged[:12]}"
+        )
         return None
-    return checkout / str(source.get("subdirectory", "."))
+    return package
+
+
+def _same_repo(a: str, b: str) -> bool:
+    def norm(url: str) -> str:
+        url = url.rstrip("/")
+        return url[: -len(".git")] if url.endswith(".git") else url
+
+    return norm(a) == norm(b)
+
+
+def _gitmodules_url(repo: Path, submodule: Path) -> Optional[str]:
+    """The URL .gitmodules gives the submodule at `submodule`, found by its
+    path (a submodule's name need not be its path)."""
+    gitmodules = repo / ".gitmodules"
+    if not gitmodules.is_file():
+        return None
+    paths = _git(
+        repo, "config", "-f", str(gitmodules), "--get-regexp", r"^submodule\..*\.path$"
+    )
+    for line in (paths or "").splitlines():
+        key, _, value = line.partition(" ")
+        if Path(value) == submodule:
+            name = key[len("submodule.") : -len(".path")]
+            return _git(repo, "config", "-f", str(gitmodules), f"submodule.{name}.url")
+    return None
+
+
+def remote_tag(git_url: str, tag: str) -> Optional[str]:
+    """The commit `tag` names in the repository at `git_url`: the peeled commit
+    of an annotated tag. "" when there is no such tag, None when the
+    repository cannot be read."""
+    res = subprocess.run(
+        [
+            "git",
+            "ls-remote",
+            "--tags",
+            git_url,
+            f"refs/tags/{tag}",
+            f"refs/tags/{tag}^{{}}",
+        ],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+    )
+    if res.returncode != 0:
+        return None
+    refs: Dict[str, str] = {}
+    for line in res.stdout.splitlines():
+        sha, _, ref = line.partition("\t")
+        refs[ref] = sha
+    return refs.get(f"refs/tags/{tag}^{{}}") or refs.get(f"refs/tags/{tag}", "")
+
+
+def install_dirs(registry_path: Path, repo: Path = REPO) -> List[Path]:
+    """The package directory of each checked-out third-party entry."""
+    registry = tomllib.loads(registry_path.read_text())
+    dirs: List[Path] = []
+    for entry in registry.get("events", []) + registry.get("module", []):
+        source = entry.get("source")
+        if not (isinstance(source, dict) and "git" in source):
+            continue
+        found = source_dir(source, "", repo, [], [], verify=False)
+        if found is not None and found.resolve() not in {d.resolve() for d in dirs}:
+            dirs.append(found)
+    return dirs
 
 
 def check(
@@ -243,7 +344,8 @@ def run_tests(registry_path: Path, repo: Path = REPO) -> List[str]:
     registry = tomllib.loads(registry_path.read_text())
     sources = set()
     for entry in registry.get("module", []) + registry.get("events", []):
-        source = source_dir(entry.get("source"), "", repo, [], [])
+        # Already verified by check(), which runs first.
+        source = source_dir(entry.get("source"), "", repo, [], [], verify=False)
         if source is not None:
             sources.add(source.resolve())
     failed = []
@@ -268,7 +370,17 @@ def main(argv: List[str] | None = None) -> int:
         action="store_true",
         help="a third-party submodule that is not checked out is a problem",
     )
+    parser.add_argument(
+        "--install-dirs",
+        action="store_true",
+        help="print the package directory of each checked-out third-party entry",
+    )
     args = parser.parse_args(argv)
+
+    if args.install_dirs:
+        for directory in install_dirs(args.registry, REPO):
+            print(directory.relative_to(REPO))
+        return 0
 
     skipped: List[str] = []
     problems = check(args.registry, REPO, strict=args.strict, skipped=skipped)

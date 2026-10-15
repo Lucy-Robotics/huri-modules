@@ -148,35 +148,106 @@ def git(cwd, *args):
     )
 
 
+UPSTREAM = "https://x.org/a"  # the entry's `git`, served from a local repo
+
+
 @pytest.fixture
-def servo_checkout(tmp_path):
-    """A repo root with modules/servo checked out at tag 0.1.0."""
-    checkout = tmp_path / "modules" / "servo"
-    checkout.mkdir(parents=True)
-    git(checkout, "init", "-q")
-    (checkout / "pyproject.toml").write_text('[project]\nname = "x"\n')
-    git(checkout, "add", ".")
-    git(checkout, "commit", "-qm", "0.1.0")
-    git(checkout, "tag", "0.1.0")
-    return tmp_path
+def servo_checkout(tmp_path, monkeypatch):
+    """A repo root with modules/servo checked out at tag 0.1.0 of UPSTREAM, a
+    local repository that git reaches through `url.<file>.insteadOf`. The
+    checkout has no tags of its own, as after CI's shallow submodule fetch."""
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    git(upstream, "init", "-q")
+    (upstream / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    git(upstream, "add", ".")
+    git(upstream, "commit", "-qm", "0.1.0")
+    git(upstream, "tag", "0.1.0")
+    git(upstream, "tag", "-a", "-m", "annotated", "0.1.0-annotated")
+    git(upstream, "commit", "-q", "--allow-empty", "-m", "0.2.0")
+    git(upstream, "tag", "0.2.0")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", f"url.{upstream.as_uri()}.insteadOf")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", UPSTREAM)
+
+    root = tmp_path / "root"
+    (root / "modules").mkdir(parents=True)
+    git(root / "modules", "clone", "-q", "--no-tags", UPSTREAM, "servo")
+    git(root / "modules" / "servo", "checkout", "-q", "HEAD~1")
+    (root / ".gitmodules").write_text(
+        '[submodule "servo"]\n\tpath = modules/servo\n\turl = ' + UPSTREAM + "\n"
+    )
+    return root
 
 
-def source_of(root, tag="0.1.0", **extra):
-    source = {"git": "https://x.org/a", "tag": tag, "submodule": "modules/servo"}
+def source_of(root, tag="0.1.0", git_url=UPSTREAM, **extra):
+    source = {"git": git_url, "tag": tag, "submodule": "modules/servo"}
     problems, skipped = [], []
     found = checker.source_dir({**source, **extra}, "servo", root, problems, skipped)
     return found, problems + skipped
 
 
-def test_a_checked_out_submodule_must_be_at_its_tag(servo_checkout):
+def test_a_checked_out_submodule_must_be_at_its_remote_tag(servo_checkout):
     checkout = servo_checkout / "modules" / "servo"
     assert source_of(servo_checkout) == (checkout, [])
     assert source_of(servo_checkout, subdirectory="pkg") == (checkout / "pkg", [])
+    # an annotated tag is compared by the commit it points to
+    assert source_of(servo_checkout, tag="0.1.0-annotated") == (checkout, [])
 
-    assert source_of(servo_checkout, tag="0.2.0")[1] == [
-        "servo: modules/servo has no tag '0.2.0'"
+    assert source_of(servo_checkout, tag="0.9.0")[1] == [
+        f"servo: {UPSTREAM} has no tag '0.9.0'"
     ]
-    git(checkout, "commit", "-q", "--allow-empty", "-m", "after the tag")
+    (problem,) = source_of(servo_checkout, tag="0.2.0")[1]
+    assert problem.startswith("servo: modules/servo is at ")
+    assert f"but tag '0.2.0' of {UPSTREAM} is" in problem
+
+
+def test_the_submodule_must_come_from_the_entry_repository(servo_checkout):
+    gitmodules = servo_checkout / ".gitmodules"
+    text = gitmodules.read_text()
+    # the same repository, spelled with .git or a trailing slash
+    gitmodules.write_text(text.replace(UPSTREAM, UPSTREAM + ".git"))
+    assert source_of(servo_checkout)[1] == []
+    assert source_of(servo_checkout, git_url=UPSTREAM + "/")[1] == []
+
+    gitmodules.write_text(text.replace(UPSTREAM, "https://evil.org/a"))
     assert source_of(servo_checkout)[1] == [
-        "servo: modules/servo is not at tag '0.1.0'"
+        f"servo: .gitmodules points modules/servo at https://evil.org/a, "
+        f"not {UPSTREAM}"
     ]
+    gitmodules.unlink()
+    assert source_of(servo_checkout)[1] == [
+        "servo: modules/servo is not a submodule in .gitmodules"
+    ]
+
+
+def test_an_unreadable_repository_is_a_problem(servo_checkout, monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        "GIT_CONFIG_KEY_0", f"url.{(tmp_path / 'gone').as_uri()}.insteadOf"
+    )
+    assert source_of(servo_checkout)[1] == [
+        f"servo: cannot list the tags of {UPSTREAM}"
+    ]
+
+
+def test_install_dirs_follow_the_registry(servo_checkout, tmp_path, monkeypatch):
+    registry = tmp_path / "registry.toml"
+    servo = SERVO.replace("https://github.com/acme/huri-module-servo", UPSTREAM)
+    registry.write_text(REGISTRY.read_text() + servo)
+    checkout = servo_checkout / "modules" / "servo"
+    assert checker.install_dirs(registry, servo_checkout) == [checkout]
+    registry.write_text(
+        REGISTRY.read_text()
+        + servo.replace(
+            'submodule = "modules/servo"',
+            'submodule = "modules/servo", subdirectory = "python"',
+        )
+    )
+    assert checker.install_dirs(registry, servo_checkout) == [checkout / "python"]
+    # no network needed: a tag that does not exist is not looked up
+    monkeypatch.setenv(
+        "GIT_CONFIG_KEY_0", f"url.{(tmp_path / 'gone').as_uri()}.insteadOf"
+    )
+    assert checker.install_dirs(registry, servo_checkout) == [checkout / "python"]
+    # a submodule that is not checked out installs nothing
+    assert checker.install_dirs(registry, ROOT) == []
