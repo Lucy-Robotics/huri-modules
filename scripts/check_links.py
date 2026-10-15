@@ -4,11 +4,12 @@
     python scripts/check_links.py [FILE_OR_DIR ...]
 
 A relative link must point to an existing file or directory, and a `#anchor`
-into a Markdown file to one of its headings (GitHub's slugs). A URL of
-`github.com/Lucy-Robotics/HuRI` is an error: that is the old name of huri-core
-(GitHub redirects it, but a page must not rely on that); HuRI's front page is
-Lucy-Robotics/HuRI-landing. Other URLs are not fetched: CI does not depend on
-the network.
+into a Markdown file to one of its headings (GitHub's slugs). Two GitHub URLs
+are errors: `github.com/Lucy-Robotics/HuRI`, the old name of huri-core (GitHub
+redirects it, but a page must not rely on that), and
+`github.com/Lucy-Robotics/HuRI-landing`, archived: its pages moved into
+huri-core, which is HuRI's front page. Other URLs are not fetched: CI does not
+depend on the network.
 
 Without arguments it checks the default pages below. A directory is searched
 for *.md files, skipping hidden directories and the third-party submodules
@@ -33,8 +34,19 @@ DEFAULT = [
 _LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)\)")
 _FENCE = re.compile(r"(?ms)^[ \t]*(```|~~~).*?^[ \t]*\1")
 _INLINE_CODE = re.compile(r"`[^`\n]*`")
-# The old name, not HuRI-landing (or any other repository starting with HuRI).
-_OLD_NAME = re.compile(r"github\.com/Lucy-Robotics/HuRI(?![\w-])", re.I)
+# Retired repositories and what replaced them. The old name must not match
+# another repository whose name starts with HuRI (HuRI-inmoov, HuRI_ATP_testsite).
+_RETIRED = [
+    (
+        re.compile(r"github\.com/Lucy-Robotics/HuRI(?![\w-])", re.I),
+        "the old name of huri-core; link Lucy-Robotics/huri-core",
+    ),
+    (
+        re.compile(r"github\.com/Lucy-Robotics/HuRI-landing(?![\w-])", re.I),
+        "HuRI-landing is archived; link Lucy-Robotics/huri-core#huri-ecosystem, "
+        "or huri-core's docs/ARCHITECTURE.md and CONTRIBUTING.md",
+    ),
+]
 
 
 def slug(heading: str) -> str:
@@ -62,10 +74,11 @@ def links(path: Path) -> Iterable[str]:
 
 
 def check_file(path: Path) -> List[str]:
+    text = path.read_text()
     problems = [
-        f"{path}: {m.group(0)} -> the old name of huri-core; link "
-        "Lucy-Robotics/huri-core, or Lucy-Robotics/HuRI-landing for the front page"
-        for m in _OLD_NAME.finditer(path.read_text())
+        f"{path}: {m.group(0)} -> {hint}"
+        for pattern, hint in _RETIRED
+        for m in pattern.finditer(text)
     ]
     for target in links(path):
         if re.match(r"^[a-z][a-z0-9+.-]*:", target):  # https:, mailto:, ...

@@ -25,8 +25,10 @@
 # Likewise there are no PVC volume mounts here, so the model-path /
 # voice-sample / GPU env vars the chart injects from .Values.models,
 # .Values.voiceAssets and workerGroups[*].containerEnv are folded into
-# runtime_env.env_vars below. Adjust the paths to wherever the weights
-# actually live on this machine.
+# runtime_env.env_vars below. Relative paths resolve against the directory
+# `ray start` / `serve run` is launched from: run them from the repository root
+# (the layout ./install.sh downloads into), or adjust the paths. For a config
+# fitted to this machine, ./install.sh writes config/huri_local.generated.yaml.
 # ============================================================================
 
 proxy_location: EveryNode
@@ -45,14 +47,7 @@ applications:
         # (tts_cosyvoice, deployment CosyVoiceTTSHandle; config/huri_cpu.yaml
         # runs Piper's `tts` instead).
         HURI_MODULES: "vad,stt,tag,emo,eag,qag,rag,tts_cosyvoice,mov"
-        OLLAMA_BASE_URL: "http://localhost:11434"
-        OLLAMA_API_KEY: "ollama"
-
         RAY_COLOR_PREFIX: "1"
-
-        # Make the CosyVoice repo (and its Matcha-TTS submodule) importable
-        # inside every replica, regardless of cwd.
-        PYTHONPATH: "/home/fifster/Tek/Eip/HuRI/assets/cosyvoice:/home/fifster/Tek/Eip/HuRI/assets/cosyvoice/third_party/Matcha-TTS"
 
         # --- Gesture sliding-window defaults (run in the HuRI CPU actor) ---
         HURI_GESTURE_CONTEXT_SEC: "2.0"
@@ -67,20 +62,24 @@ applications:
         # The reference transcript MUST come AFTER the marker, or the LM treats
         # it as an instruction and intermittently speaks it (prompt leakage).
         HURI_VOICE_TRANSCRIPT: "You are a helpful assistant.<|endofprompt|>Instinct creates its own oppressors and bids us rise up against them."
-        # From .Values.models.cosytts.env (mountPath/modelId) — edit for local layout.
-        HURI_MODEL_PATH: assets/cosyvoice_model
-        # Path to the CosyVoice repo root containing third_party/Matcha-TTS.
+        # From .Values.models.cosytts.env (mountPath/modelId), at the path
+        # ./install.sh downloads it to.
+        HURI_MODEL_PATH: assets/models/cosytts/FunAudioLLM/Fun-CosyVoice3-0.5B-2512
+        # CosyVoice checkout (not pip-installable): the handle puts it and its
+        # third_party/Matcha-TTS on sys.path, so no PYTHONPATH is needed.
         HURI_COSY_DIR: assets/cosyvoice
         # From .Values.voiceAssets.env — the reference voice sample.
         HURI_VOICE_SAMPLE_PATH: assets/voice.wav
 
         # --- STT (faster-whisper) ---
-        # From .Values.models.whisper.env (mountPath/repoId) — edit for local layout.
+        # Unset: faster-whisper downloads the "base" model. Point it at a local
+        # copy (the Helm chart mounts one at this path) to run offline.
         # HURI_STT_MODEL_PATH: /models/whisper/Systran/faster-whisper-base
 
         # --- Gesture (EMAGE) ---
-        # From .Values.models.emage.env (mountPath/repoId) — edit for local layout.
-        HURI_EMAGE_REPO: assets/emage_audio
+        # From .Values.models.emage.env (mountPath/repoId), at the path
+        # ./install.sh downloads it to.
+        HURI_EMAGE_REPO: assets/models/emage/H-Liu1997/emage_audio
 
         # --- GPU-vendor runtime env (Helm puts these on the worker containers) ---
         NVIDIA_VISIBLE_DEVICES: "all"
@@ -116,10 +115,14 @@ applications:
           num_cpus: 1
           num_gpus: 0
         user_config:
-          embedding_model: "bge-large-en-v1.5-gguf-Q4_K_M"
+          # Keys of huri_rag.rag.RAGDeploymentConfig. The API key is not set
+          # here: rag.py reads HURI_LLM_API_KEY (needed for llm_provider "api").
+          qdrant_url: "http://localhost:6333"
+          llm_provider: "ollama"          # "ollama", "vllm" or "api"
+          llm_url: "http://localhost:11434"
           llm_model: "mistral:7b"
-          llm_base_url: "http://localhost:11434/v1"   # Ollama's OpenAI-compatible endpoint
-          llm_api_key: "ollama"
+          # Same default as ./install.sh; empty embedding_url uses llm_url.
+          embedding_model: "bge-m3"
           memory_maintenance_check_hours: 0.5
 
       # GPU split (manual override knob): num_gpus are Ray *scheduling*
@@ -129,8 +132,8 @@ applications:
       # HURI_GESTURE_GPU_MEM_FRACTION above.
       #
       # These fractions must sum to <= the --num-gpus you pass to `ray start`.
-      # As written STT(0.5) + TTS(0.8) + Gesture(0.2) = 1.5, so use
-      # --num-gpus=2 (e.g. two physical GPUs), or lower the fractions to fit 1.
+      # As written STT(0) + TTS(0.8) + Gesture(0.2) = 1.0, which fits the
+      # --num-gpus=1 above.
       - name: CosyVoiceTTSHandle
         ray_actor_options:
           num_cpus: 1

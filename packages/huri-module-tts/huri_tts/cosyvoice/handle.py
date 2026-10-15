@@ -33,6 +33,18 @@ def _normalize_transcript(raw: str) -> str:
     )
 
 
+def _add_cosyvoice_to_path(cosy_dir: str) -> None:
+    """Make a CosyVoice checkout importable: its root and Matcha-TTS submodule.
+
+    CosyVoice is not pip-installable, so `HURI_COSY_DIR` stands in for a
+    PYTHONPATH entry and the Serve config needs no absolute, per-host path.
+    """
+    for path in (cosy_dir, os.path.join(cosy_dir, "third_party", "Matcha-TTS")):
+        path = os.path.abspath(path)
+        if os.path.isdir(path) and path not in sys.path:
+            sys.path.insert(0, path)
+
+
 _END_TEXT = object()  # sentinel pushed into the text queue to close synth
 _END_AUDIO = object()  # sentinel pushed into the audio queue when synth completes
 _DONE = object()  # sentinel for exhausted sync generator
@@ -57,9 +69,7 @@ class CosyVoiceTTSHandle:
     ):
         cosy_dir = os.environ.get("HURI_COSY_DIR")
         if cosy_dir:
-            matcha_path = os.path.join(cosy_dir, "third_party", "Matcha-TTS")
-            if os.path.isdir(matcha_path) and matcha_path not in sys.path:
-                sys.path.insert(0, matcha_path)
+            _add_cosyvoice_to_path(cosy_dir)
 
         from cosyvoice.cli.cosyvoice import CosyVoice3
 

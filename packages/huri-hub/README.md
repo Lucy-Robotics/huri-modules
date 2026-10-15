@@ -44,7 +44,7 @@ pip installs the package and its extra, not what a module may need besides:
 model weights, exact hardware pins (`requirements-<variant>[.<module>].txt`) or
 a setup script. `huri hub install tts_cosyvoice`, for one, brings torch and
 torchaudio unpinned, but not CosyVoice's pins, its checkout
-(`install_cosyvoice.sh`) nor its `PYTHONPATH`; after a curated module, the
+(`install_cosyvoice.sh`) nor its `HURI_COSY_DIR`; after a curated module, the
 command prints where its package's README says what is left.
 
 It refuses a module when another installed distribution registers the same

@@ -1,6 +1,6 @@
 # huri-modules
 
-The one repository to clone to try or deploy [HuRI](https://github.com/Lucy-Robotics/HuRI-landing),
+The one repository to clone to try or deploy [HuRI](https://github.com/Lucy-Robotics/huri-core#huri-ecosystem),
 the open-source conversational pipeline for humanoid robots and virtual avatars:
 speech to text, retrieval-augmented answers from an LLM, emotion, speech
 synthesis and co-speech gestures, served to many clients (robots) at once by a
@@ -287,10 +287,15 @@ huri-cli --config config/client_local.generated.yaml
 `start.sh` waits for the application to report `RUNNING` and exits non-zero with
 the replica errors if it does not, so a failed deploy is never reported as
 success. `status.sh` reads the _application_ status, not the HTTP proxy's health
-route (which is green even when every deployment is dead).
+route (which is green even when every deployment is dead). `stop.sh` runs
+`serve shutdown` and `ray stop` only when `start.sh` started the Ray head (it
+records that session in `.huri-local/ray.owned`). On a Ray cluster it did not
+start, `stop.sh` removes only the `huri-app` application and leaves Ray and
+every other Serve application running.
 
 `source .huri-local/env.sh` gives a shell configured exactly like a Serve
-replica (model paths, `HURI_MODULES`, STT device, API key), so
+replica (model paths, `HURI_MODULES`, STT device, GPU selection and
+`HSA_OVERRIDE_GFX_VERSION` on AMD, API key), so
 `python -m huri_core.launch_huri` and `python -m huri_rag.ingestion` work
 without `serve deploy`.
 
@@ -365,7 +370,11 @@ The provider selects the wire protocol (`ollama` → `/api/chat`, `vllm`/`api` �
 `/v1/chat/completions`, only `api` sends the bearer token) and is inferred from
 the URL and whether a key was given. Re-point an existing install without
 reinstalling anything: `./install.sh --only config --llm-url ... --llm-model ...`
-then restart (`.huri-local/stop.sh && .huri-local/start.sh`).
+then restart (`.huri-local/stop.sh && .huri-local/start.sh`). `--llm-url` and
+`--llm-model` changes reach the replicas through `serve deploy` either way. An
+API key or GPU variable change only reaches them through a fresh Ray head: if
+`stop.sh` left Ray running because `start.sh` did not start it, run `ray stop`
+yourself (when nothing else uses that cluster) before `start.sh`.
 
 ## Troubleshooting
 
@@ -755,10 +764,12 @@ its repository.
 
 ## More
 
-- [HuRI](https://github.com/Lucy-Robotics/HuRI-landing) — where to start, the
-  architecture and how to contribute
+- [HuRI ecosystem](https://github.com/Lucy-Robotics/huri-core#huri-ecosystem) —
+  where to start, the repositories and what is built with HuRI
 - [huri-core](https://github.com/Lucy-Robotics/huri-core) — the framework, its
-  public surface and its releases
+  public surface and its releases; the
+  [architecture](https://github.com/Lucy-Robotics/huri-core/blob/main/docs/ARCHITECTURE.md)
+  and [how to contribute](https://github.com/Lucy-Robotics/huri-core/blob/main/CONTRIBUTING.md)
 - [huri-plugin-template](https://github.com/Lucy-Robotics/huri-plugin-template) —
   the starting point for a new module
 - HuRI's complete developer documentation is available

@@ -31,10 +31,21 @@ def test_a_broken_link_or_anchor_is_reported(tmp_path):
 def test_the_old_repository_name_is_reported(tmp_path):
     page = tmp_path / "page.md"
     page.write_text(
-        "[front](https://github.com/Lucy-Robotics/HuRI-landing) "
-        "[core](https://github.com/Lucy-Robotics/huri-core)\n"
+        "[front](https://github.com/Lucy-Robotics/huri-core#huri-ecosystem) "
+        "[robot](https://github.com/Lucy-Robotics/HuRI-inmoov) "
+        "[site](https://github.com/Lucy-Robotics/HuRI_ATP_testsite)\n"
     )
     assert links.check_file(page) == []
     for old in ("HuRI)", "HuRI.git", "huri/tree/dev", "HuRI#readme"):
         page.write_text(f"[old](https://github.com/Lucy-Robotics/{old}\n")
-        assert len(links.check_file(page)) == 1, old
+        problems = links.check_file(page)
+        assert len(problems) == 1 and "old name of huri-core" in problems[0], old
+
+
+def test_the_archived_landing_repository_is_reported(tmp_path):
+    page = tmp_path / "page.md"
+    for old in ("HuRI-landing)", "HuRI-landing/blob/main/ARCHITECTURE.md)"):
+        page.write_text(f"[front](https://github.com/Lucy-Robotics/{old}\n")
+        problems = links.check_file(page)
+        assert len(problems) == 1 and "archived" in problems[0], old
+        assert "huri-core#huri-ecosystem" in problems[0]
