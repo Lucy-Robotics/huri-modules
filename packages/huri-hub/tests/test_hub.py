@@ -319,7 +319,32 @@ def test_python_dash_m_runs_the_command():
         [sys.executable, "-m", "huri_hub", "--help"], capture_output=True, text=True
     )
     assert res.returncode == 0, res.stderr
-    assert "huri hub" in res.stdout and "install" in res.stdout
+    assert res.stdout.startswith("usage: python -m huri_hub ")
+    assert "install" in res.stdout
+
+
+@pytest.mark.parametrize(
+    "argv0,argv,prog",
+    [
+        ("/venv/bin/huri-hub", None, "huri-hub"),
+        # huri-core's `huri` passes the arguments: `huri hub`, whatever ran it.
+        ("/venv/bin/huri", ["--help"], "huri hub"),
+        ("/venv/bin/huri-hub", ["--help"], "huri hub"),
+    ],
+)
+def test_usage_names_the_command_as_it_was_run(capsys, monkeypatch, argv0, argv, prog):
+    monkeypatch.setattr(sys, "argv", [argv0, "--help"])
+    with pytest.raises(SystemExit):
+        cli.main(argv)
+    assert capsys.readouterr().out.startswith(f"usage: {prog} ")
+
+
+def test_errors_name_the_command_as_it_was_run(capsys, monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        sys, "argv", ["huri-hub", "list", "--registry", str(tmp_path / "none")]
+    )
+    assert cli.main() == 1
+    assert capsys.readouterr().err.startswith("huri-hub: no registry at ")
 
 
 def test_help_and_a_missing_command(capsys):

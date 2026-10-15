@@ -171,10 +171,23 @@ def cmd_install(args: Any, fetch: Fetch, out: Callable[[str], None]) -> int:
     return 0
 
 
-def main(argv: Optional[List[str]] = None, fetch: Fetch = http_fetch) -> int:
+def _prog(argv: Optional[List[str]]) -> str:
+    """The command's name in its usage and errors: `huri hub` when huri-core's
+    `huri` runs it (it passes the arguments), else how it was started."""
+    if argv is None and Path(sys.argv[0]).name.startswith("huri-hub"):
+        return "huri-hub"
+    return "huri hub"
+
+
+def main(
+    argv: Optional[List[str]] = None,
+    fetch: Fetch = http_fetch,
+    prog: Optional[str] = None,
+) -> int:
     """Find and install HuRI modules: the verified registry and the community."""
+    prog = prog or _prog(argv)
     parser = argparse.ArgumentParser(
-        prog="huri hub", description=(__doc__ or "").split("\n\n")[0]
+        prog=prog, description=(__doc__ or "").split("\n\n")[0]
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -210,5 +223,5 @@ def main(argv: Optional[List[str]] = None, fetch: Fetch = http_fetch) -> int:
         code: int = args.run(args, fetch, print)
         return code
     except HubError as e:
-        print(f"huri hub: {e}", file=sys.stderr)
+        print(f"{prog}: {e}", file=sys.stderr)
         return 1

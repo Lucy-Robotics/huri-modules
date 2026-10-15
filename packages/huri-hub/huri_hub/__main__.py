@@ -4,4 +4,4 @@ import sys
 
 from huri_hub.cli import main
 
-sys.exit(main())
+sys.exit(main(prog="python -m huri_hub"))
