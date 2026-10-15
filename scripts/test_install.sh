@@ -15,7 +15,9 @@
 #
 # The repo is COPIED into a scratch directory per target first: a real install
 # writes .huri-local/ and config/*.generated.yaml, and running that against your
-# working tree would clobber the setup you are using.
+# working tree would clobber the setup you are using. huri-core is installed
+# from git at the ref in HURI_CORE_REF, as on any machine (HURI_CORE_PATH is not
+# passed into the containers).
 #
 # GPU paths are deliberately not covered — containers here have no GPU, and the
 # GPU logic is what needs a human with the hardware in front of them.
@@ -41,7 +43,7 @@ bad()  { printf '  %s✗%s %s\n' "$C_R" "$C_RST" "$*" >&2; }
 step() { printf '\n%s==>%s %s%s%s\n' "$C_C" "$C_RST" "$C_B" "$*" "$C_RST"; }
 
 usage() {
-  sed -n '3,21p' "$SCRIPT_PATH" | sed 's/^# \{0,1\}//'
+  sed -n '3,23p' "$SCRIPT_PATH" | sed 's/^# \{0,1\}//'
 }
 
 while [[ $# -gt 0 ]]; do

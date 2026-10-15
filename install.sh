@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Installs the curated modules on this machine: probes the hardware, plans
-# which modules fit, installs them with the right variant of their
-# dependencies and writes the matching server and client configs. Every flag
-# of scripts/install_local.sh applies (--plan-only, --modules, --tts-engine...).
+# Installs HuRI on this machine: probes the hardware, plans which curated
+# modules fit, installs huri-core (at the git ref in HURI_CORE_REF), the curated
+# events and modules with the right variant of their dependencies, and writes
+# the matching server and client configs. scripts/install_local.sh is the
+# implementation, and every one of its flags applies:
 #
-# While huri-modules lives inside the HuRI repository this delegates to the
-# installer next door; it becomes that installer once this directory is its
-# own repository (see README.md).
+#   ./install.sh --plan-only                    # what would run on this machine?
+#   ./install.sh                                # show the plan, then install it
+#   ./install.sh --modules rag --tts-engine piper ...
+#   ./install.sh --help
+#   HURI_CORE_PATH=../huri-core ./install.sh    # with a local huri-core checkout
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$here/../scripts/install_local.sh" "$@"
+exec "$here/scripts/install_local.sh" "$@"

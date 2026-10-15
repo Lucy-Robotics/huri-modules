@@ -1,8 +1,8 @@
-# Keep the Docker build context small — the repo root is ~1.8G otherwise.
+# Keep the Docker build context small (.venv/ and assets/ alone are GiBs).
 # The Dockerfiles (deploy/Dockerfile.{base,nvidia,amd}) only COPY the
-# requirement/constraint files, huri_core/, packages/, pyproject.toml,
-# README.md, LICENSE and deploy/install_huri.sh — nothing below is needed in
-# the build context.
+# requirement/constraint files, HURI_CORE_REF, packages/ and
+# deploy/install_huri.sh — huri-core is installed from its own repository at
+# that ref, not from the build context. Nothing below is needed.
 .venv/
 .git/
 node_modules/
@@ -12,3 +12,5 @@ node_modules/
 **/build/
 **/*.egg-info/
 **/.pytest_cache/
+assets/
+.huri-local/

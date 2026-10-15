@@ -15,11 +15,18 @@
 # here. Components that do not fit are moved to CPU or dropped from the module
 # set, and the generated Ray Serve config reflects that decision.
 #
-# Usage:
-#   scripts/install_local.sh --plan-only      # just tell me what would run here
-#   scripts/install_local.sh                  # probe, show the plan, install
-#   scripts/install_local.sh --yes            # no prompts
-#   scripts/install_local.sh --help
+# Usage, from the repository root (install.sh runs this script):
+#   ./install.sh --plan-only      # just tell me what would run here
+#   ./install.sh                  # probe, show the plan, install
+#   ./install.sh --yes            # no prompts
+#   ./install.sh --help
+#
+# huri-core is not in this repository: it is installed from
+# https://github.com/Lucy-Robotics/huri-core at the git ref in HURI_CORE_REF (a
+# file at the repository root; the HURI_CORE_REF environment variable overrides
+# it), or editable from a local checkout given as HURI_CORE_PATH=/path/to/huri-core.
+# The curated events and modules (packages/*) and the reference CLI
+# (examples/cli) are installed editable from this checkout.
 #
 # Everything it generates lives in .huri-local/ plus config/*.generated.yaml,
 # so the install is inspectable and removable (`rm -rf .huri-local`).
@@ -36,6 +43,13 @@ ASSETS_DIR="$REPO_ROOT/assets"
 MODELS_DIR="$ASSETS_DIR/models"
 VENV_DIR="$REPO_ROOT/.venv"
 LOG_FILE="$STATE_DIR/install.log"
+
+# --- huri-core: the framework this repository is built and tested against ----
+
+HURI_CORE_GIT="https://github.com/Lucy-Robotics/huri-core.git"
+# One line, a git ref of huri-core: a release tag ("0.4.0") on main, "dev" on dev.
+HURI_CORE_REF="${HURI_CORE_REF:-$(tr -d '[:space:]' <"$REPO_ROOT/HURI_CORE_REF" 2>/dev/null || true)}"
+HURI_CORE_PATH="${HURI_CORE_PATH:-}"
 
 # --- Pinned versions (kept in sync with deploy/) -----------------------------
 
@@ -156,7 +170,7 @@ usage() {
   cat <<'USAGE'
 HuRI local installer — installs the full stack on this machine (no Kubernetes).
 
-  scripts/install_local.sh [options]
+  ./install.sh [options]
 
 Planning
   -n, --dry-run           Print every command instead of running it.
@@ -214,6 +228,12 @@ Install
                           system,python,models,services,config,verify
   -h, --help              This message
 
+Environment
+  HURI_CORE_PATH=DIR      Install huri-core editable from this local checkout
+                          instead of git (to develop core and modules together)
+  HURI_CORE_REF=REF       huri-core git ref to install (default: the content of
+                          the HURI_CORE_REF file at the repository root)
+
 Outputs
   .huri-local/                    plan.env, env.sh, start.sh, stop.sh, status.sh
   config/huri_local.generated.yaml       Ray Serve config for this machine
@@ -265,6 +285,13 @@ done
 case "$PROFILE" in auto|nvidia|amd|cpu) ;; *) echo "unknown --profile '$PROFILE'" >&2; exit 2 ;; esac
 case "${STT_DEVICE_OVERRIDE:-cpu}" in gpu|cpu) ;; *) echo "unknown --stt-device '$STT_DEVICE_OVERRIDE' (gpu|cpu)" >&2; exit 2 ;; esac
 case "$TTS_ENGINE" in auto|piper|cosyvoice) ;; *) echo "unknown --tts-engine '$TTS_ENGINE' (auto|piper|cosyvoice)" >&2; exit 2 ;; esac
+if [[ -n "$HURI_CORE_PATH" ]]; then
+  [[ -f "$HURI_CORE_PATH/pyproject.toml" && -d "$HURI_CORE_PATH/huri_core" ]] \
+    || { echo "HURI_CORE_PATH='$HURI_CORE_PATH' is not a huri-core checkout" >&2; exit 2; }
+  HURI_CORE_PATH="$(readlink -f "$HURI_CORE_PATH")"
+elif [[ -z "$HURI_CORE_REF" ]]; then
+  echo "no huri-core ref: $REPO_ROOT/HURI_CORE_REF is missing or empty" >&2; exit 2
+fi
 
 # An API key given on an earlier run lives in .huri-local/secrets.env; reload it
 # so `--only config` re-runs keep working without re-passing the secret.
@@ -437,7 +464,7 @@ rocm_runtime_hint() {
             note "sudo apt install ${ROCM_PKGS_APT[*]}" ;;
     *)      note "install the ROCm $ROCM_VERSION runtime for your distro (hip-runtime + rocblas/hipblas/miopen/rccl/roctracer)" ;;
   esac
-  note "Then re-run: scripts/install_local.sh --only verify"
+  note "Then re-run: ./install.sh --only verify"
 }
 
 # rocm_gfx_override <venv python> — echo the HSA_OVERRIDE_GFX_VERSION this GPU
@@ -627,6 +654,15 @@ detect_tools() {
   have ollama && HAS_OLLAMA=1 || HAS_OLLAMA=0
 }
 
+# Where huri-core is installed from, for humans.
+core_source() {
+  if [[ -n "$HURI_CORE_PATH" ]]; then
+    printf 'editable from %s (HURI_CORE_PATH)\n' "$HURI_CORE_PATH"
+  else
+    printf 'git ref %s of %s\n' "$HURI_CORE_REF" "${HURI_CORE_GIT%.git}"
+  fi
+}
+
 report_detection() {
   step "Machine"
   printf '    %-14s %s %s\n' "os"     "$OS_NAME" "$OS_VERSION$( ((IS_WSL)) && echo ' (WSL2)')"
@@ -641,6 +677,7 @@ report_detection() {
       "${GPU_DRIVER:+, driver $GPU_DRIVER}"
   fi
   printf '    %-14s %s\n' "python" "${PY_BIN:-<none suitable>} ${PY_VERSION:+($PY_VERSION)}"
+  printf '    %-14s %s\n' "huri-core" "$(core_source)"
   compute_system_packages
   if [[ -n "$PKG_MGR" ]]; then
     printf '    %-14s %s\n' "pkg manager" "$PKG_MGR"
@@ -1439,11 +1476,18 @@ install_python_deps() {
   run "$PIP" install "${C[@]}" -r "$REPO_ROOT/serve_requirements.txt"
   info "  base requirements"
   run "$PIP" install "${C[@]}" -r "$REPO_ROOT/requirements.txt"
-  # HuRI itself, editable: registers its modules and events (entry points),
-  # which is how the server finds them.
-  info "  huri-core (editable)"
-  run "$PIP" install "${C[@]}" --no-deps -e "$REPO_ROOT"
-  # The curated events and modules: one distribution each under packages/.
+  # The framework, from its own repository at the ref this repository is
+  # tested against (HURI_CORE_REF), or a local checkout (HURI_CORE_PATH). The
+  # extras' deps are already satisfied by the requirement files above; they
+  # are kept so a mismatch between the two shows up here, as a resolver error.
+  info "  huri-core ($(core_source))"
+  if [[ -n "$HURI_CORE_PATH" ]]; then
+    run "$PIP" install "${C[@]}" -e "${HURI_CORE_PATH}[server,client]"
+  else
+    run "$PIP" install "${C[@]}" "huri-core[server,client] @ git+$HURI_CORE_GIT@$HURI_CORE_REF"
+  fi
+  # The curated events and modules: one distribution each under packages/,
+  # registering them through entry points, which is how the server finds them.
   # Their dependencies come from the requirement files installed above.
   local pkg
   for pkg in "$REPO_ROOT"/packages/*/; do
@@ -1715,7 +1759,7 @@ PY
       ok "voice sample present at $ASSETS_DIR/voice.wav"
     else
       warn "no $ASSETS_DIR/voice.wav — TTS will start but zero-shot synthesis needs it."
-      note "Add one with: scripts/install_local.sh --only models,config \\"
+      note "Add one with: ./install.sh --only models,config \\"
       note "    --voice-sample /path/to/voice.wav --voice-transcript 'exact words spoken'"
       note "(--only config alone will NOT copy the file — 'models' is the stage that does)"
     fi
@@ -1878,9 +1922,11 @@ generate_configs() {
   local cosy_model="$MODELS_DIR/cosytts/$COSYTTS_MODEL_ID"
   local whisper_path="$MODELS_DIR/whisper/${WHISPER_REPO_PREFIX}-${STT_SIZE}"
   local emage_path="$MODELS_DIR/emage/$EMAGE_REPO_ID"
-  local pythonpath="$REPO_ROOT"
-  # CosyVoice needs its checkout on the path; piper is a normal installed package.
-  [[ "$P_TTS_DEV" != "off" && "$TTS_ENGINE" == "cosyvoice" ]] && pythonpath="$REPO_ROOT:$cosy_dir:$cosy_dir/third_party/Matcha-TTS"
+  # Everything HuRI runs is an installed distribution (huri-core, packages/*);
+  # only CosyVoice, which is not pip-installable, needs its checkout on the path.
+  local pythonpath_line=""
+  [[ "$P_TTS_DEV" != "off" && "$TTS_ENGINE" == "cosyvoice" ]] \
+    && pythonpath_line="        PYTHONPATH: \"$cosy_dir:$cosy_dir/third_party/Matcha-TTS\""
   local stt_workers=1
   if [[ "$P_STT_DEV" == "cpu" ]]; then
     stt_workers=$(( CPU_CORES / 4 ))
@@ -1897,7 +1943,7 @@ generate_configs() {
 # Host: $(hostname) · $(date -Is)
 # Profile: ${GPU_VENDOR}${GPU_NAME:+ (${GPU_NAME}, $(mb_to_gb "$GPU_VRAM_MB") GiB)} · verdict: $P_VERDICT
 #
-# Regenerate with:  scripts/install_local.sh --only config
+# Regenerate with:  ./install.sh --only config
 # Start with:       .huri-local/start.sh
 #
 # Device plan:
@@ -1919,10 +1965,10 @@ applications:
     runtime_env:
       env_vars:
         RAY_COLOR_PREFIX: "1"
-        PYTHONPATH: "$pythonpath"
+${pythonpath_line}
 
         # Only these modules are registered, so no deployment is created for the
-        # ones this machine cannot run (see huri_core/core/plugins.py).
+        # ones this machine cannot run (HURI_MODULES, huri-core's allow-list).
         HURI_MODULES: "$(served_modules)"
 
         # --- STT (faster-whisper) ---
@@ -2189,7 +2235,7 @@ write_secrets() {
   local esc="${LLM_API_KEY//\'/\'\\\'\'}"
   write_file "$STATE_DIR/secrets.env" <<EOF
 # HuRI local secrets — sourced by .huri-local/start.sh. Not committed.
-# Change the key with: scripts/install_local.sh --only config --llm-api-key ...
+# Change the key with: ./install.sh --only config --llm-api-key ...
 export HURI_LLM_API_KEY='${esc}'
 EOF
   (( DRY_RUN )) || chmod 600 "$STATE_DIR/secrets.env"
@@ -2233,7 +2279,7 @@ source "$VENV_DIR/bin/activate"
 
 # Model paths, module allow-list, TTS/gesture tuning — the same values the
 # generated Serve config injects into every replica (regenerate both with
-# 'scripts/install_local.sh --only config').
+# './install.sh --only config').
 if [ -r "$STATE_DIR/huri.env" ]; then
   set -a; . "$STATE_DIR/huri.env"; set +a
 fi
@@ -2242,11 +2288,6 @@ if [ -r "$STATE_DIR/secrets.env" ]; then
   # shellcheck disable=SC1091
   . "$STATE_DIR/secrets.env"
 fi
-
-case ":\${PYTHONPATH:-}:" in
-  *":\$HURI_ROOT:"*) ;;
-  *) export PYTHONPATH="\$HURI_ROOT\${PYTHONPATH:+:\$PYTHONPATH}" ;;
-esac
 $gfx_export
 EOF
 
@@ -2303,7 +2344,7 @@ EOF
 if ! curl -fsS --max-time 2 ${QDRANT_URL%/}/readyz >/dev/null 2>&1; then
   echo "[huri] WARNING: qdrant is not answering at ${QDRANT_URL%/}, and HuRI does"
   echo "[huri]          not manage this instance. Start it yourself, or free the"
-  echo "[huri]          port and re-run: scripts/install_local.sh --only services"
+  echo "[huri]          port and re-run: ./install.sh --only services"
 fi
 EOF
     fi
@@ -2334,7 +2375,7 @@ EOF
     cat <<EOF
 
 # --- 3. Ray head ------------------------------------------------------------
-# Started from the repo root so replicas can import huri_core.app.
+# Started from the repo root; replicas import huri_core.app from the venv.
 EOF
 
     if [[ "$GPU_VENDOR" == "amd" ]] && (( GPU_COUNT > 1 )); then
@@ -2582,7 +2623,7 @@ print("kernel launch ok:", float((a @ a).float().sum()) == float((a @ a).float()
         note "arch / built-for: $karch"
         if [[ "$GPU_VENDOR" == "amd" ]]; then
           note "this card's gfx target is likely absent from the installed torch build."
-          note "Re-run 'scripts/install_local.sh --only config' to set HSA_OVERRIDE_GFX_VERSION,"
+          note "Re-run './install.sh --only config' to set HSA_OVERRIDE_GFX_VERSION,"
           note "or install a torch built for it (download.pytorch.org ROCm wheels cover"
           note "consumer RDNA3; the repo.radeon.com '.lw.' wheels do not)."
         fi
@@ -2679,7 +2720,7 @@ PY
       ok "voice sample present at $ASSETS_DIR/voice.wav"
     else
       err "no $ASSETS_DIR/voice.wav — TTS is enabled but has no reference voice"
-      note "Add one with: scripts/install_local.sh --only models,config \\"
+      note "Add one with: ./install.sh --only models,config \\"
       note "    --voice-sample /path/to/voice.wav --voice-transcript 'exact words spoken'"
       failures=1
     fi

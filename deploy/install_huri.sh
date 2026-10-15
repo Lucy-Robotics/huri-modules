@@ -1,22 +1,34 @@
 #!/bin/sh
-# Installs HuRI into an image: huri-core plus every distribution under
-# packages/ (the curated events and modules), all from the build context.
+# Installs HuRI into an image: huri-core from its repository at a git ref, plus
+# every distribution under packages/ (the curated events and modules) from the
+# build context.
 #
-#   install_huri.sh SRC_DIR
+#   install_huri.sh SRC_DIR [HURI_CORE_REF]
+#
+# SRC_DIR holds packages/ and the HURI_CORE_REF file of this repository; an
+# empty or absent HURI_CORE_REF argument (the Dockerfiles' build arg) means
+# that file's ref, the one this repository is tested against.
 #
 # --no-deps: each image installs the heavy, hardware-specific dependencies
-# first, from its own requirement files; these packages only add the code.
-# Every curated module is installed, whatever the image's hardware: the head
-# node imports every enabled module class to build the app and bind its
-# deployments (module code imports its heavy dependencies lazily), while
-# HURI_MODULES and the Serve config decide what actually runs where.
+# first, from its own requirement files (which also satisfy huri-core's
+# [server] extra); these packages only add the code. Every curated module is
+# installed, whatever the image's hardware: the head node imports every enabled
+# module class to build the app and bind its deployments (module code imports
+# its heavy dependencies lazily), while HURI_MODULES and the Serve config
+# decide what actually runs where.
 #
 # The build fails here, rather than at deploy time, if a module or event does
 # not load or the installed versions do not fit together.
 set -eu
-src="${1:?usage: install_huri.sh SRC_DIR}"
+src="${1:?usage: install_huri.sh SRC_DIR [HURI_CORE_REF]}"
+ref="${2:-}"
+[ -n "$ref" ] || ref="$(tr -d '[:space:]' <"$src/HURI_CORE_REF")"
+[ -n "$ref" ] || { echo "install_huri.sh: no huri-core ref" >&2; exit 1; }
+echo "huri-core: git ref $ref"
 
-pip install --no-cache-dir --no-deps "$src" "$src"/packages/*/
+pip install --no-cache-dir --no-deps \
+  "huri-core @ git+https://github.com/Lucy-Robotics/huri-core.git@$ref" \
+  "$src"/packages/*/
 
 python - <<'PY'
 from huri_core.core.compat import check_manifests, check_modules
