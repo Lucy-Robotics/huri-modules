@@ -63,6 +63,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pyyaml
+      - name: the pages' relative links and anchors resolve
+        # Stdlib only, no network: README.md, RELEASING.md, ACCEPTANCE.md,
+        # modules/README.md and every page under packages/ and examples/.
+        run: python scripts/check_links.py
       - name: every config/*.yaml is valid YAML
         run: |
           python - <<'PY'
@@ -108,13 +112,12 @@ jobs:
       - name: install the lint toolchain only
         # mypy has ignore_missing_imports, so it runs without ray/torch/etc.
         run: pip install -c constraints.txt black isort flake8 flake8-toml-config mypy
-      - name: huri-core's source at the pinned ref, for mypy
-        # Its types: installed huri-core ships no py.typed, so mypy would see
-        # every framework class as Any. A checkout on MYPYPATH is read as source.
+      - name: huri-core at the pinned ref, for mypy
+        # It ships py.typed, so mypy reads its types from the installed
+        # package. --no-deps: its own dependencies are not needed for that.
         run: |
-          git clone --quiet --depth 1 --branch "$(cat HURI_CORE_REF)" \
-            https://github.com/Lucy-Robotics/huri-core.git "$RUNNER_TEMP/huri-core"
-          echo "MYPYPATH=$RUNNER_TEMP/huri-core" >> "$GITHUB_ENV"
+          pip install -c constraints.txt --no-deps \
+            "huri-core @ git+https://github.com/Lucy-Robotics/huri-core.git@$(cat HURI_CORE_REF)"
       - run: black --check packages examples tests check_registry.py scripts
       - run: isort --check-only packages examples tests check_registry.py scripts
       - run: flake8 packages examples tests check_registry.py scripts
@@ -232,7 +235,10 @@ jobs:
   test:
     # pinned: the huri-core ref in HURI_CORE_REF, what a release of this
     # repository is tested against — blocking. canary: huri-core's dev branch,
-    # non-blocking, to see a breaking core change before it is released.
+    # non-blocking, to see a breaking core change before it is released. The
+    # canary is red by design between a core minor release (core dev moves to
+    # the next .dev0, outside the modules' ranges) and the PR that moves this
+    # repository to the next core minor (RELEASING.md, step 5).
     name: pytest (huri-core ${{ matrix.name }})
     runs-on: ubuntu-latest
     continue-on-error: ${{ matrix.canary }}
@@ -279,12 +285,15 @@ jobs:
         run: |
           pip install --no-deps -e examples/cli
           for pkg in packages/*/; do pip install --no-deps -e "$pkg"; done
-          for mod in modules/*/; do
-            if [ -f "$mod/pyproject.toml" ]; then pip install -c constraints.txt -e "$mod"; fi
+          # The registry says where each one's package is (subdirectory).
+          python check_registry.py --install-dirs | while read -r dir; do
+            pip install -c constraints.txt -e "$dir"
           done
       - run: pytest -q
       - name: the registry matches its packages, and their own tests pass
-        # --strict: every third-party submodule must be checked out, at its tag.
+        # --strict: every third-party submodule must be checked out, at the
+        # commit its tag names in its repository (read with git ls-remote, as
+        # the shallow submodule checkout carries no tags).
         run: python check_registry.py --strict --run-tests
       - name: the shipped client configs load through the real loader
         # Stricter than the `configs` job: this exercises ClientConfig.from_dict
