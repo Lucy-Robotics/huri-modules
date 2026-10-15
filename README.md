@@ -287,10 +287,13 @@ huri-cli --config config/client_local.generated.yaml
 `start.sh` waits for the application to report `RUNNING` and exits non-zero with
 the replica errors if it does not, so a failed deploy is never reported as
 success. `status.sh` reads the _application_ status, not the HTTP proxy's health
-route (which is green even when every deployment is dead).
+route (which is green even when every deployment is dead). `stop.sh` runs
+`ray stop` only when `start.sh` started the Ray head (it records that in
+`.huri-local/ray.owned`); a Ray cluster that was already running is left up.
 
 `source .huri-local/env.sh` gives a shell configured exactly like a Serve
-replica (model paths, `HURI_MODULES`, STT device, API key), so
+replica (model paths, `HURI_MODULES`, STT device, GPU selection and
+`HSA_OVERRIDE_GFX_VERSION` on AMD, API key), so
 `python -m huri_core.launch_huri` and `python -m huri_rag.ingestion` work
 without `serve deploy`.
 
