@@ -286,6 +286,12 @@ jobs:
         run: |
           pip install --no-deps -e examples/cli
           for pkg in packages/*/; do pip install --no-deps -e "$pkg"; done
+          # Piper (module tts) is huri-module-tts's `piper` extra, in no
+          # requirement file (a CosyVoice host must not get its onnxruntime):
+          # what the installer's module requirements step gives a CPU host.
+          python scripts/module_requirements.py --variant cpu --modules tts \
+            -o "$RUNNER_TEMP/requirements-tts.txt"
+          pip install -c constraints.txt -r "$RUNNER_TEMP/requirements-tts.txt"
           # The registry says where each one's package is (subdirectory).
           python check_registry.py --install-dirs | while read -r dir; do
             pip install -c constraints.txt -e "$dir"

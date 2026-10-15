@@ -19,6 +19,12 @@ The base install has no engine library; `[tool.huri-modules.extras]` in
 `requirements-<variant>.tts_cosyvoice.txt`: only a host that plans
 `tts_cosyvoice` gets them, so they never meet Piper's `onnxruntime`.
 
+Upgrading from the three packages this one replaced (huri-tts,
+huri-module-tts-piper, huri-module-tts-cosyvoice): `pip uninstall huri-tts
+huri-module-tts-piper huri-module-tts-cosyvoice` first (`./install.sh` does
+it). Left installed, they claim the module names `tts` and `tts_cosyvoice` too,
+and huri-core then loads no module at all.
+
 Piper (`tts`):
 
 ```sh

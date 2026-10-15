@@ -17,10 +17,10 @@ ray[serve]==2.55.1
 setuptools
 webrtcvad==2.0.10
 faster-whisper==1.2.1
-# Default TTS engine: ONNX only (no torch), abi3 wheel for x86_64 + aarch64,
-# ~30x faster than realtime on CPU. CosyVoice (requirements-nvidia.txt) is the
-# opt-in alternative for zero-shot voice cloning on an NVIDIA GPU.
-piper-tts==1.8.0
+# No TTS engine here: each comes with its module's extra of huri-module-tts
+# (`tts`: [piper], `tts_cosyvoice`: [cosyvoice]), so a CosyVoice host never
+# gets Piper's onnxruntime next to its onnxruntime-gpu, nor a Piper host
+# CosyVoice's stack.
 qdrant-client==1.18.0
 sentence-transformers==3.2.1
 pypdf==5.1.0

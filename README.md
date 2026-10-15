@@ -354,6 +354,7 @@ then restart (`.huri-local/stop.sh && .huri-local/start.sh`).
 | The server refuses to start: the installed `huri-core` is not in a module's range | The core in the venv is not the one this checkout is tested with. `./install.sh --only python` reinstalls huri-core at the commit `HURI_CORE_REF` names now (a branch such as `dev` included); or check out the huri-modules release matching your core (see [Versions](#versions-and-compatibility)). |
 | `qdrant is not answering … HuRI does not manage this instance` | Something else already owned the port when you installed, so HuRI never created its own. Start it yourself, or free the port and re-run `--only services`.           |
 | No audio from the client                                       | Check TTS is actually enabled (`grep HURI_MODULES config/huri_local.generated.yaml`) — with `--modules` or a dropped plan there may be no TTS at all.                |
+| No module loads: `entry point 'tts' is registered twice` | An environment from before huri-module-tts still has the three packages it replaced. `./install.sh --only python` removes them; otherwise `pip uninstall huri-tts huri-module-tts-piper huri-module-tts-cosyvoice`, then install huri-module-tts. |
 | Install fails with no explanation                              | Every command's output is in `.huri-local/install.log`, and the error line names the real command.                                                                   |
 
 ## Usage without the installer
@@ -412,6 +413,9 @@ pip install -c constraints.txt \
   "huri-core[server,client] @ git+https://github.com/Lucy-Robotics/huri-core.git@$(cat HURI_CORE_REF)"
 for p in packages/*/; do pip install -c constraints.txt --no-deps -e "$p"; done
 pip install --no-deps -e examples/cli
+# the TTS engine, in no file above: Piper (module tts) is huri-module-tts's
+# `piper` extra; CosyVoice (tts_cosyvoice), see packages/huri-module-tts
+pip install -c constraints.txt -e 'packages/huri-module-tts[piper]'
 ```
 
 Note that `requirements.txt` also contains the lint/test toolchain.
