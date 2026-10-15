@@ -1,15 +1,18 @@
 # Fast checks on every push and pull request (~3 minutes).
 #
-# huri-core is not in this repository: the tests run against the ref pinned in
-# HURI_CORE_REF (blocking), and against huri-core's `dev` branch as a canary
-# (non-blocking), so a breaking change in core shows up here before a release.
+# huri-core is not in this repository: the tests run against the ref pinned as
+# HURI_CORE_REF in versions.env (blocking), and against huri-core's `dev`
+# branch as a canary (non-blocking), so a breaking change in core shows up here
+# before a release. huri-cli is not tested here: it has its own repository and
+# CI (the installer's plan job and the nightly install.yml exercise installing
+# it).
 #
 # The expensive "does it actually install" run lives in install.yml, and the
 # GPU paths live in gpu.yml (self-hosted — no hosted runner has a GPU).
 #
 # What this deliberately covers, because it is what has actually broken before:
-#   * the shipped configs parsing at all (an indentation slip made
-#     client_aux.yaml unloadable, and client_full.yaml was missing a required key)
+#   * the shipped configs parsing at all (an indentation slip once made a
+#     client config unloadable, and another was missing a required key)
 #   * the installer's planner on all three supported distros, without installing
 #     anything — this is where OS/python/package-list bugs show up
 #   * the flag surface, including the overrides that feed the resource budget
@@ -20,6 +23,12 @@ on:
     branches: [main, dev]
   pull_request:
   workflow_dispatch:
+
+# Never wait for credentials: a git URL that answers 401 (a missing or private
+# repository) must fail the step, not hang it on a prompt.
+env:
+  GIT_TERMINAL_PROMPT: "0"
+  GIT_ASKPASS: /bin/true
 
 permissions:
   contents: read
@@ -65,7 +74,7 @@ jobs:
       - run: pip install pyyaml
       - name: the pages' relative links and anchors resolve
         # Stdlib only, no network: README.md, RELEASING.md, ACCEPTANCE.md,
-        # modules/README.md and every page under packages/ and examples/.
+        # modules/README.md and every page under packages/.
         run: python scripts/check_links.py
       - name: every config/*.yaml is valid YAML
         run: |
@@ -117,14 +126,14 @@ jobs:
         # package. --no-deps: its own dependencies are not needed for that.
         run: |
           pip install -c constraints.txt --no-deps \
-            "huri-core @ git+https://github.com/Lucy-Robotics/huri-core.git@$(cat HURI_CORE_REF)"
-      - run: black --check packages examples tests check_registry.py scripts
-      - run: isort --check-only packages examples tests check_registry.py scripts
-      - run: flake8 packages examples tests check_registry.py scripts
+            "huri-core @ git+https://github.com/Lucy-Robotics/huri-core.git@$(. ./versions.env && echo "$HURI_CORE_REF")"
+      - run: black --check packages tests check_registry.py scripts
+      - run: isort --check-only packages tests check_registry.py scripts
+      - run: flake8 packages tests check_registry.py scripts
       - name: mypy
         # Not gating yet: packages/huri-module-rag/huri_rag/{semantic_chunker,ingestion}.py carry
         # pre-existing errors. Remove `|| true` once those are fixed.
-        run: mypy packages examples --check-untyped-defs || true
+        run: mypy packages --check-untyped-defs || true
       - name: mypy (files that are already clean must stay clean)
         # --follow-imports=silent: report only on the files listed below.
         # The MOV package follows into gesture/emage/modeling.py, whose 3
@@ -133,7 +142,7 @@ jobs:
         # depending on the environment.
         run: |
           mypy --check-untyped-defs --follow-imports=silent \
-            packages/huri-events/huri_events examples/cli/huri_cli packages/huri-module-tts/huri_tts \
+            packages/huri-events/huri_events packages/huri-module-tts/huri_tts \
             packages/huri-module-vad/huri_vad packages/huri-module-stt/huri_stt packages/huri-module-tag/huri_tag \
             packages/huri-hub/huri_hub check_registry.py
 
@@ -190,6 +199,8 @@ jobs:
         run: echo "HURI_PY=${{ matrix.python }}" >> "$GITHUB_ENV"
 
       - name: plan
+        # Offline by design: --plan-only shows the refs of versions.env and
+        # resolves none of them (tests/test_installer.py checks it with a fake git).
         run: ./install.sh --plan-only --python "$HURI_PY"
 
       - name: the plan must reach a usable verdict
@@ -215,6 +226,7 @@ jobs:
           run --llm-model qwen2.5:1.5b
           run --llm-url http://remote.example:8000 --llm-model foo
           run --vram 8192 --profile cpu
+          run --no-cli
           echo "--- rejections"
           ! ./install.sh --plan-only --python "$HURI_PY" --modules bogus >/dev/null 2>&1
           ! ./install.sh --plan-only --python "$HURI_PY" --tts-engine nope >/dev/null 2>&1
@@ -234,7 +246,7 @@ jobs:
           if-no-files-found: ignore
 
   test:
-    # pinned: the huri-core ref in HURI_CORE_REF, what a release of this
+    # pinned: HURI_CORE_REF in versions.env, what a release of this
     # repository is tested against — blocking. canary: huri-core's dev branch,
     # non-blocking, to see a breaking core change before it is released. The
     # canary is red by design between a core minor release (core dev moves to
@@ -275,16 +287,15 @@ jobs:
       - name: install huri-core
         run: |
           ref="${{ matrix.core_ref }}"
-          ref="${ref:-$(cat HURI_CORE_REF)}"
+          ref="${ref:-$(. ./versions.env && echo "$HURI_CORE_REF")}"
           echo "huri-core at $ref"
           pip install -c constraints.txt \
             "huri-core[server,client,dev] @ git+https://github.com/Lucy-Robotics/huri-core.git@$ref"
-      - name: install the curated events and modules, the CLI, and the verified third-party modules
+      - name: install the curated events and modules, and the verified third-party modules
         # Registers the modules and events (entry points) — HuRI finds them there.
         # A third-party module brings its own dependencies; the curated ones
         # come from the requirement files above.
         run: |
-          pip install --no-deps -e examples/cli
           for pkg in packages/*/; do pip install --no-deps -e "$pkg"; done
           # Piper (module tts) is huri-module-tts's `piper` extra, in no
           # requirement file (a CosyVoice host must not get its onnxruntime):

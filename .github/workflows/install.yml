@@ -1,6 +1,7 @@
 # The expensive check: does ./install.sh (scripts/install_local.sh) actually
 # install a working HuRI on a clean machine? huri-core comes from its repository
-# at the ref in HURI_CORE_REF, as for any user.
+# at HURI_CORE_REF and huri-cli from its repository at HURI_CLI_REF (both in
+# versions.env), as for any user.
 #
 # Nightly and on demand rather than per-push, because a full CPU install pulls
 # ~3.5 GB of wheels and takes 15-30 minutes per target. CI.yml covers the cheap
@@ -30,6 +31,12 @@ on:
         type: choice
         default: piper
         options: [piper, cosyvoice]
+
+# Never wait for credentials: a git URL that answers 401 (a missing or private
+# repository) must fail the step, not hang it on a prompt.
+env:
+  GIT_TERMINAL_PROMPT: "0"
+  GIT_ASKPASS: /bin/true
 
 permissions:
   contents: read
@@ -73,7 +80,7 @@ jobs:
         # individual lines too so a silently skipped check is visible.
         run: |
           log=.huri-local/install.log
-          for want in "core imports" "module registry builds" "STT model loads"; do
+          for want in "core imports" "module registry builds" "huri-cli imports" "STT model loads"; do
             grep -q "OK    $want" "$log" \
               || { echo "::error::missing verification: $want"; exit 1; }
           done

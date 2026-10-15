@@ -49,6 +49,12 @@ on:
         type: boolean
         default: false
 
+# Never wait for credentials: a git URL that answers 401 (a missing or private
+# repository) must fail the step, not hang it on a prompt.
+env:
+  GIT_TERMINAL_PROMPT: "0"
+  GIT_ASKPASS: /bin/true
+
 permissions:
   contents: read
 

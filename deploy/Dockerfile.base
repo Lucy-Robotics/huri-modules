@@ -19,16 +19,17 @@ COPY serve_requirements.txt /app
 RUN pip install --no-cache-dir -c /app/constraints.txt -r serve_requirements.txt
 
 # HuRI itself: huri-core, from its repository at HURI_CORE_REF (a git ref of
-# https://github.com/Lucy-Robotics/huri-core; empty = the HURI_CORE_REF file of
-# this repository), + the curated events and modules (packages/), as installed
-# distributions — that is how the server finds them (entry points). Built from
-# a copy the build user owns, since pip builds local projects in place; the
-# script fails the build if modules and events do not fit together.
-#   docker build --build-arg HURI_CORE_REF="$(cat HURI_CORE_REF)" ...
+# https://github.com/Lucy-Robotics/huri-core; empty = HURI_CORE_REF in
+# versions.env, the ref this repository is tested against), + the curated
+# events and modules (packages/), as installed distributions — that is how the
+# server finds them (entry points). Built from a copy the build user owns,
+# since pip builds local projects in place; the script fails the build if
+# modules and events do not fit together. The images do not carry huri-cli.
+#   docker build --build-arg HURI_CORE_REF="$(. ./versions.env && echo "$HURI_CORE_REF")" ...
 # A branch name (dev) is cached with this layer: pass its commit instead, or
 # build with --no-cache (README.md, "Docker images").
 ARG HURI_CORE_REF=""
-COPY --chown=ray HURI_CORE_REF /tmp/huri-src/
+COPY --chown=ray versions.env /tmp/huri-src/
 COPY --chown=ray packages /tmp/huri-src/packages
 COPY --chown=ray deploy/install_huri.sh /tmp/huri-src/
 RUN sh /tmp/huri-src/install_huri.sh /tmp/huri-src "$HURI_CORE_REF" && rm -rf /tmp/huri-src

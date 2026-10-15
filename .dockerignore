@@ -1,8 +1,8 @@
 # Keep the Docker build context small (.venv/ and assets/ alone are GiBs).
 # The Dockerfiles (deploy/Dockerfile.{base,nvidia,amd}) only COPY the
-# requirement/constraint files, HURI_CORE_REF, packages/ and
+# requirement/constraint files, versions.env, packages/ and
 # deploy/install_huri.sh — huri-core is installed from its own repository at
-# that ref, not from the build context. Nothing below is needed.
+# its HURI_CORE_REF, not from the build context. Nothing below is needed.
 .venv/
 .git/
 node_modules/

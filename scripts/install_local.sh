@@ -22,11 +22,18 @@
 #   ./install.sh --help
 #
 # huri-core is not in this repository: it is installed from
-# https://github.com/Lucy-Robotics/huri-core at the git ref in HURI_CORE_REF (a
-# file at the repository root; the HURI_CORE_REF environment variable overrides
-# it), or editable from a local checkout given as HURI_CORE_PATH=/path/to/huri-core.
-# The curated events and modules (packages/*, with huri-hub: `huri hub`) and the
-# reference CLI (examples/cli) are installed editable from this checkout.
+# https://github.com/Lucy-Robotics/huri-core at HURI_CORE_REF (versions.env at
+# the repository root; the HURI_CORE_REF environment variable overrides it), or
+# editable from a local checkout given as HURI_CORE_PATH=/path/to/huri-core.
+# The curated events and modules (packages/*, with huri-hub: `huri hub`) are
+# installed editable from this checkout. huri-cli, the reference client (a use
+# case of HuRI, not part of it), comes the same way as huri-core: from
+# https://github.com/Lucy-Robotics/huri-cli at HURI_CLI_REF, or editable from
+# HURI_CLI_PATH; --no-cli leaves it out.
+#
+# No git network call here ever prompts for credentials (a missing or private
+# repository answers 401, and git would ask): see the environment set below.
+# --plan-only makes none at all.
 #
 # Everything it generates lives in .huri-local/ plus config/*.generated.yaml,
 # so the install is inspectable and removable (`rm -rf .huri-local`).
@@ -44,17 +51,41 @@ MODELS_DIR="$ASSETS_DIR/models"
 VENV_DIR="$REPO_ROOT/.venv"
 LOG_FILE="$STATE_DIR/install.log"
 
-# --- huri-core: the framework this repository is built and tested against ----
+# --- Git, never interactive ---------------------------------------------------
 
+# Every git process this script starts, directly or through pip (git+https
+# requirements): no terminal prompt, no askpass helper (GIT_ASKPASS answers
+# empty, SSH_ASKPASS is what desktops set for a GUI prompt), no interactive
+# credential manager. A repository that wants credentials then fails at once,
+# with the error below, instead of asking for a GitHub login.
+export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/true GCM_INTERACTIVE=never
+unset SSH_ASKPASS
+
+# --- versions.env: the refs this repository is built and tested against -------
+
+VERSIONS_FILE="$REPO_ROOT/versions.env"
+
+# versions_get KEY — KEY's value in versions.env (the last KEY= line, without
+# quotes, trailing comment or blanks); empty when absent. Read, not sourced.
+versions_get() {
+  [[ -r "$VERSIONS_FILE" ]] || return 0
+  sed -n "s/^[[:space:]]*$1=//p" "$VERSIONS_FILE" | tail -n 1 \
+    | sed 's/[[:space:]]#.*$//' | tr -d "[:space:]\"'"
+}
+
+# huri-core: the framework. A release tag ("0.4.0") on main; on dev, that tag or
+# "dev" (see RELEASING.md). The environment overrides the file.
 HURI_CORE_GIT="https://github.com/Lucy-Robotics/huri-core.git"
-# One line, a git ref of huri-core: a release tag ("0.4.0") on main; on dev,
-# that tag or "dev" (see RELEASING.md).
-HURI_CORE_REF="${HURI_CORE_REF:-$(tr -d '[:space:]' <"$REPO_ROOT/HURI_CORE_REF" 2>/dev/null || true)}"
+HURI_CORE_REF="${HURI_CORE_REF:-$(versions_get HURI_CORE_REF)}"
 HURI_CORE_PATH="${HURI_CORE_PATH:-}"
-# The commit HURI_CORE_REF names, resolved once by resolve_core_sha; empty when
-# it could not be resolved (offline), and then the ref name is installed.
+# huri-cli: the reference client, installed unless --no-cli.
+HURI_CLI_GIT="https://github.com/Lucy-Robotics/huri-cli.git"
+HURI_CLI_REF="${HURI_CLI_REF:-$(versions_get HURI_CLI_REF)}"
+HURI_CLI_PATH="${HURI_CLI_PATH:-}"
+# The commits the refs name, resolved by resolve_refs when installing (never by
+# --plan-only or --dry-run, which make no network call).
 HURI_CORE_SHA=""
-HURI_CORE_RESOLVED=0
+HURI_CLI_SHA=""
 
 # --- Pinned versions (kept in sync with deploy/) -----------------------------
 
@@ -169,6 +200,7 @@ SKIP_SYSTEM=0
 SKIP_PYTHON=0
 SKIP_MODELS=0
 SKIP_SERVICES=0
+INSTALL_CLI=1
 ONLY_STAGES=""
 
 usage() {
@@ -229,6 +261,8 @@ Install
       --skip-python       Don't create/populate the virtualenv
       --skip-models       Don't download model weights
       --skip-services     Don't install/start Qdrant and Ollama
+      --no-cli            Don't install huri-cli, the reference client (a
+                          server-only host, or you bring your own client)
       --only S[,S...]     Run only these stages:
                           system,python,models,services,config,verify
   -h, --help              This message
@@ -236,8 +270,13 @@ Install
 Environment
   HURI_CORE_PATH=DIR      Install huri-core editable from this local checkout
                           instead of git (to develop core and modules together)
-  HURI_CORE_REF=REF       huri-core git ref to install (default: the content of
-                          the HURI_CORE_REF file at the repository root)
+  HURI_CORE_REF=REF       huri-core git ref to install (default: HURI_CORE_REF
+                          in versions.env at the repository root)
+  HURI_CLI_PATH=DIR       Install huri-cli editable from this local checkout
+  HURI_CLI_REF=REF        huri-cli git ref to install (default: HURI_CLI_REF in
+                          versions.env)
+  Git never prompts for credentials: a repository it cannot read fails the
+  install with a message naming the ref to fix. --plan-only stays offline.
 
 Outputs
   .huri-local/                    plan.env, env.sh, start.sh, stop.sh, status.sh
@@ -279,6 +318,7 @@ while [[ $# -gt 0 ]]; do
     --skip-python)     SKIP_PYTHON=1 ;;
     --skip-models)     SKIP_MODELS=1 ;;
     --skip-services)   SKIP_SERVICES=1 ;;
+    --no-cli)          INSTALL_CLI=0 ;;
     --only)            ONLY_STAGES="${2:?}"; shift ;;
     -h|--help)         usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -295,7 +335,17 @@ if [[ -n "$HURI_CORE_PATH" ]]; then
     || { echo "HURI_CORE_PATH='$HURI_CORE_PATH' is not a huri-core checkout" >&2; exit 2; }
   HURI_CORE_PATH="$(readlink -f "$HURI_CORE_PATH")"
 elif [[ -z "$HURI_CORE_REF" ]]; then
-  echo "no huri-core ref: $REPO_ROOT/HURI_CORE_REF is missing or empty" >&2; exit 2
+  echo "no huri-core ref: no HURI_CORE_REF in $VERSIONS_FILE (or the environment)" >&2; exit 2
+fi
+if (( ! INSTALL_CLI )); then
+  :
+elif [[ -n "$HURI_CLI_PATH" ]]; then
+  [[ -f "$HURI_CLI_PATH/pyproject.toml" && -d "$HURI_CLI_PATH/huri_cli" ]] \
+    || { echo "HURI_CLI_PATH='$HURI_CLI_PATH' is not a huri-cli checkout" >&2; exit 2; }
+  HURI_CLI_PATH="$(readlink -f "$HURI_CLI_PATH")"
+elif [[ -z "$HURI_CLI_REF" ]]; then
+  echo "no huri-cli ref: no HURI_CLI_REF in $VERSIONS_FILE (or the environment);" \
+    "set one, or pass --no-cli" >&2; exit 2
 fi
 
 # An API key given on an earlier run lives in .huri-local/secrets.env; reload it
@@ -664,41 +714,68 @@ detect_tools() {
   have ollama && HAS_OLLAMA=1 || HAS_OLLAMA=0
 }
 
-# The commit HURI_CORE_REF names in huri-core's repository, into HURI_CORE_SHA
-# (call it directly, not in a $(...) subshell, or the result is lost):
-# a moving ref (a branch, "dev") is installed at the commit it is at now, not at
-# a name pip would consider already installed. A tag resolves to the commit it
-# points to. Offline, HURI_CORE_SHA stays empty and the ref name is used.
-resolve_core_sha() {
-  ((HURI_CORE_RESOLVED)) && return 0
-  HURI_CORE_RESOLVED=1
-  if [[ "$HURI_CORE_REF" =~ ^[0-9a-f]{40}$ ]]; then
-    HURI_CORE_SHA="$HURI_CORE_REF"; return 0
+# resolve_ref NAME URL REF PATH_VAR — the commit REF names in the repository at
+# URL, on stdout: a moving ref (a branch, "dev") is installed at the commit it is
+# at now, not at a name pip would consider already installed; a tag resolves to
+# the commit it points to (a tag wins over a branch of the same name, as git
+# does). A full commit hash is returned as is, without a network call.
+# Dies with what to fix when the repository cannot be read (unreachable,
+# missing, private: git does not prompt, see above) or has no such ref.
+resolve_ref() {
+  local name="$1" url="$2" ref="$3" path_var="$4"
+  if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+    printf '%s\n' "$ref"; return 0
   fi
-  have git || return 0
-  local refs
-  local timeout=()
+  local fix="check ${path_var%_PATH}_REF in versions.env, or set $path_var to a local checkout"
+  have git || die "cannot resolve $name ref $ref: git is not installed ($fix)"
+  local refs timeout=()
   have timeout && timeout=(timeout 30)
-  refs="$(GIT_TERMINAL_PROMPT=0 "${timeout[@]}" git ls-remote "$HURI_CORE_GIT" \
-    "refs/tags/$HURI_CORE_REF^{}" "refs/tags/$HURI_CORE_REF" \
-    "refs/heads/$HURI_CORE_REF" 2>/dev/null)" || return 0
-  # A tag wins over a branch of the same name, as git does; an annotated tag's
-  # peeled (^{}) line is the commit.
-  HURI_CORE_SHA="$(awk -v r="$HURI_CORE_REF" '
+  if ! refs="$("${timeout[@]}" git -c credential.helper= ls-remote "$url" \
+      "refs/tags/$ref^{}" "refs/tags/$ref" "refs/heads/$ref" 2>&1)"; then
+    _log "ERR   git ls-remote $url: $refs"
+    die "cannot reach $name at ref $ref ($url: $(tail -n 1 <<<"$refs")): $fix"
+  fi
+  local sha
+  sha="$(awk -v r="$ref" '
     $2 == "refs/tags/" r "^{}" { peeled = $1 }
     $2 == "refs/tags/" r       { tag = $1 }
     $2 == "refs/heads/" r      { head = $1 }
     END { print (peeled != "" ? peeled : (tag != "" ? tag : head)) }' <<<"$refs")"
+  [[ -n "$sha" ]] || die "$name has no tag or branch $ref (${url%.git}): $fix"
+  printf '%s\n' "$sha"
 }
 
-# Where huri-core is installed from, for humans.
+# resolve_refs — HURI_CORE_SHA and HURI_CLI_SHA, for what is installed from git.
+# Only when installing for real: --plan-only and --dry-run stay offline.
+resolve_refs() {
+  (( DRY_RUN || PLAN_ONLY )) && return 0
+  if [[ -z "$HURI_CORE_PATH" && -z "$HURI_CORE_SHA" ]]; then
+    HURI_CORE_SHA="$(resolve_ref huri-core "$HURI_CORE_GIT" "$HURI_CORE_REF" HURI_CORE_PATH)" || exit 1
+  fi
+  if (( INSTALL_CLI )) && [[ -z "$HURI_CLI_PATH" && -z "$HURI_CLI_SHA" ]]; then
+    HURI_CLI_SHA="$(resolve_ref huri-cli "$HURI_CLI_GIT" "$HURI_CLI_REF" HURI_CLI_PATH)" || exit 1
+  fi
+}
+
+# Where huri-core / huri-cli are installed from, for humans. No network call:
+# the commit shows once resolve_refs has run.
 core_source() {
   if [[ -n "$HURI_CORE_PATH" ]]; then
     printf 'editable from %s (HURI_CORE_PATH)\n' "$HURI_CORE_PATH"
   else
-    resolve_core_sha
     printf 'git ref %s%s of %s\n' "$HURI_CORE_REF" \
       "${HURI_CORE_SHA:+ (${HURI_CORE_SHA:0:12})}" "${HURI_CORE_GIT%.git}"
+  fi
+}
+
+cli_source() {
+  if (( ! INSTALL_CLI )); then
+    printf 'not installed (--no-cli)\n'
+  elif [[ -n "$HURI_CLI_PATH" ]]; then
+    printf 'editable from %s (HURI_CLI_PATH)\n' "$HURI_CLI_PATH"
+  else
+    printf 'git ref %s%s of %s\n' "$HURI_CLI_REF" \
+      "${HURI_CLI_SHA:+ (${HURI_CLI_SHA:0:12})}" "${HURI_CLI_GIT%.git}"
   fi
 }
 
@@ -716,7 +793,6 @@ report_detection() {
       "${GPU_DRIVER:+, driver $GPU_DRIVER}"
   fi
   printf '    %-14s %s\n' "python" "${PY_BIN:-<none suitable>} ${PY_VERSION:+($PY_VERSION)}"
-  resolve_core_sha  # here, not in core_source's subshell, so the result sticks
   printf '    %-14s %s\n' "huri-core" "$(core_source)"
   compute_system_packages
   if [[ -n "$PKG_MGR" ]]; then
@@ -1180,6 +1256,8 @@ report_plan() {
 
   echo
   printf '    %-22s %s\n' "modules registered" "$(served_modules)"
+  printf '    %-22s %s\n' "client" "$( ((INSTALL_CLI)) \
+    && echo "huri-cli ($(cli_source))" || echo "none (--no-cli)")"
   printf '    %-22s %s GiB needed / %s GiB present\n' "ram" "$(mb_to_gb $P_RAM_NEED)" "$(mb_to_gb $RAM_TOTAL_MB)"
   printf '    %-22s %s GiB needed / %s GiB free\n' "disk" "$(mb_to_gb $P_DISK_NEED)" "$(mb_to_gb $DISK_FREE_MB)"
   if [[ "$GPU_VENDOR" != "none" ]]; then
@@ -1247,6 +1325,8 @@ HURI_GESTURE_FRAC=$P_GES_FRAC
 HURI_STT_FRAC=$P_STT_FRAC
 HURI_VENV=$VENV_DIR
 HURI_PYTHON=$PY_BIN
+HURI_CORE_REF=$HURI_CORE_REF
+HURI_CLI=$( ((INSTALL_CLI)) && echo "${HURI_CLI_PATH:-$HURI_CLI_REF}" || echo none)
 EOF
 }
 
@@ -1521,7 +1601,7 @@ install_python_deps() {
   # tested against (HURI_CORE_REF), or a local checkout (HURI_CORE_PATH). The
   # extras' deps are already satisfied by the requirement files above; they
   # are kept so a mismatch between the two shows up here, as a resolver error.
-  [[ -n "$HURI_CORE_PATH" ]] || resolve_core_sha
+  resolve_refs
   info "  huri-core ($(core_source))"
   if [[ -n "$HURI_CORE_PATH" ]]; then
     run "$PIP" install "${C[@]}" -e "${HURI_CORE_PATH}[server,client]"
@@ -1550,8 +1630,22 @@ install_python_deps() {
   for pkg in "$REPO_ROOT"/packages/*/; do
     run "$PIP" install "${C[@]}" --no-deps -e "$pkg"
   done
-  # The reference CLI client (huri-cli); its deps are in requirements.txt.
-  run "$PIP" install "${C[@]}" --no-deps -e "$REPO_ROOT/examples/cli"
+  # The reference client, huri-cli (its own repository: a use case of HuRI),
+  # after huri-core and huri-events, which it depends on: its version ranges
+  # must accept them, or this is a resolver error. Like core, --force-reinstall
+  # --no-deps then a plain pass, so a re-run picks up the commit a branch is at.
+  if (( INSTALL_CLI )); then
+    info "  huri-cli ($(cli_source))"
+    if [[ -n "$HURI_CLI_PATH" ]]; then
+      run "$PIP" install "${C[@]}" -e "$HURI_CLI_PATH"
+    else
+      local cli="huri-cli @ git+$HURI_CLI_GIT@${HURI_CLI_SHA:-$HURI_CLI_REF}"
+      run "$PIP" install "${C[@]}" --force-reinstall --no-deps "$cli"
+      run "$PIP" install "${C[@]}" "$cli"
+    fi
+  else
+    note "huri-cli skipped (--no-cli)"
+  fi
 
   # 3. (The ROCm CTranslate2 wheel is installed in step 1, alongside torch; the
   #    AMD requirements file is installed last, in step 5 — see the note there.)
@@ -2302,6 +2396,16 @@ EOF
   fi
 }
 
+# How to talk to the server once it is up: huri-cli, or with --no-cli whatever
+# client the user brings, with the generated session.
+client_command() {
+  if (( INSTALL_CLI )); then
+    echo "huri-cli --config config/client_local.generated.yaml"
+  else
+    echo "<your client> with config/client_local.generated.yaml (huri-cli skipped: --no-cli)"
+  fi
+}
+
 generate_run_scripts() {
   # Does HuRI own a Qdrant it is able to start? start_qdrant() returns early
   # when something already answers on the port, in which case no huri-qdrant
@@ -2485,7 +2589,7 @@ if [ "\$huri_state" = "RUNNING" ]; then
   echo
   echo "HuRI is up. Talk to it with:"
   echo "    source .huri-local/env.sh"
-  echo "    huri-cli --config config/client_local.generated.yaml"
+  echo "    $(client_command)"
   echo
   echo "Status: .huri-local/status.sh   Dashboard: http://127.0.0.1:8265"
 else
@@ -2645,6 +2749,21 @@ PY
     err "module registry failed to build (HURI_MODULES=$(served_modules)):"
     detail "$out"
     failures=1
+  fi
+
+  # The reference client imports against the installed core and events. Only an
+  # error when this run installed it; otherwise (--only verify, --skip-python)
+  # it may have been left out on purpose by an earlier --no-cli.
+  if (( INSTALL_CLI )); then
+    if out="$(PYTHONWARNINGS=ignore "$VPY" -c 'import huri_cli.main' 2>&1)"; then
+      ok "huri-cli imports"
+    elif stage_enabled python && (( ! SKIP_PYTHON )); then
+      err "huri-cli does not import:"
+      detail "$out"
+      failures=1
+    else
+      warn "huri-cli does not import (not installed by this run; --no-cli silences this)"
+    fi
   fi
 
   if [[ "$GPU_VENDOR" != "none" ]]; then
@@ -2906,7 +3025,7 @@ main() {
     Start:   .huri-local/start.sh
     Status:  .huri-local/status.sh
     Client:  source .huri-local/env.sh
-             huri-cli --config config/client_local.generated.yaml
+             $(client_command)
     Stop:    .huri-local/stop.sh [--all]
 
     Plan:    .huri-local/plan.env          Log: .huri-local/install.log

@@ -5,7 +5,8 @@
 # Building an image already checks HuRI's own side: deploy/install_huri.sh
 # fails the build if a module or event does not load, or if the installed
 # versions do not satisfy the modules' manifests. huri-core is installed from
-# its repository at the ref in HURI_CORE_REF (the build arg below).
+# its repository at HURI_CORE_REF of versions.env (the build arg below). The
+# images do not carry huri-cli.
 name: Docker images
 
 on:
@@ -13,7 +14,7 @@ on:
     paths:
       - "deploy/**"
       - "packages/**"
-      - "HURI_CORE_REF"
+      - "versions.env"
       - "*requirements*.txt"
       - "constraints.txt"
       - ".dockerignore"
@@ -24,6 +25,12 @@ on:
         description: "Also build the nvidia and amd images"
         type: boolean
         default: false
+
+# Never wait for credentials: a git URL that answers 401 (a missing or private
+# repository) must fail the step, not hang it on a prompt.
+env:
+  GIT_TERMINAL_PROMPT: "0"
+  GIT_ASKPASS: /bin/true
 
 permissions:
   contents: read
@@ -42,7 +49,7 @@ jobs:
       - name: build deploy/Dockerfile.base
         run: |
           docker build -f deploy/Dockerfile.base \
-            --build-arg HURI_CORE_REF="$(cat HURI_CORE_REF)" -t huri:ci-base .
+            --build-arg HURI_CORE_REF="$(. ./versions.env && echo "$HURI_CORE_REF")" -t huri:ci-base .
       - name: start HuRI in the image (tag + qag, no model needed)
         run: |
           docker run -d --name huri --shm-size=2g -p 127.0.0.1:8000:8000 \
@@ -61,7 +68,7 @@ jobs:
         run: |
           pip install websockets omegaconf numpy
           pip install --no-deps ./packages/huri-events \
-            "huri-core @ git+https://github.com/Lucy-Robotics/huri-core.git@$(cat HURI_CORE_REF)"
+            "huri-core @ git+https://github.com/Lucy-Robotics/huri-core.git@$(. ./versions.env && echo "$HURI_CORE_REF")"
           python deploy/smoke_session.py ws://127.0.0.1:8000/session
       - if: failure()
         run: docker logs huri || true
@@ -84,4 +91,4 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           docker build -f deploy/Dockerfile.${{ matrix.target }} \
-            --build-arg HURI_CORE_REF="$(cat HURI_CORE_REF)" -t huri:ci-${{ matrix.target }} .
+            --build-arg HURI_CORE_REF="$(. ./versions.env && echo "$HURI_CORE_REF")" -t huri:ci-${{ matrix.target }} .

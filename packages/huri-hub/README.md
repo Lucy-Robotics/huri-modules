@@ -24,7 +24,7 @@ PyPI, so pip never looks them up on an index):
 
 ```sh
 ref=0.1.0   # a huri-modules release tag
-core=0.4.0  # the huri-core ref in that release's HURI_CORE_REF file
+core=0.4.0  # HURI_CORE_REF in that release's versions.env
 pip install \
   "huri-core @ git+https://github.com/Lucy-Robotics/huri-core.git@$core" \
   "huri-hub @ git+https://github.com/Lucy-Robotics/huri-modules.git@$ref#subdirectory=packages/huri-hub"

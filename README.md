@@ -18,12 +18,15 @@ It holds everything around the framework that you need to run it:
   installs modules from that registry and the community (see
   [Finding modules](#finding-modules-huri-hub));
 - the installer ([`install.sh`](install.sh)), the Docker images ([`deploy/`](deploy)),
-  the Helm chart ([`helm/`](helm)) and the shipped configs ([`config/`](config));
-- [`huri-cli`](examples/cli), the reference command-line client.
+  the Helm chart ([`helm/`](helm)) and the shipped configs ([`config/`](config)).
 
 The framework itself, [`huri-core`](https://github.com/Lucy-Robotics/huri-core),
-lives in its own repository and is installed from git at the ref in
-[`HURI_CORE_REF`](HURI_CORE_REF) (see [Versions](#versions-and-compatibility)).
+lives in its own repository and is installed from git at the `HURI_CORE_REF` in
+[`versions.env`](versions.env) (see [Versions](#versions-and-compatibility)).
+The reference command-line client,
+[`huri-cli`](https://github.com/Lucy-Robotics/huri-cli), is a use case of HuRI
+with its own repository and releases; the installer adds it, at the
+`HURI_CLI_REF` in the same file.
 To write a module of your own, start from
 [`huri-plugin-template`](https://github.com/Lucy-Robotics/huri-plugin-template).
 
@@ -44,13 +47,15 @@ huri-cli --config config/client_local.generated.yaml
 ```
 
 You get a `>>` prompt; typing or speaking both work. `\exit` quits the client
-and leaves the server running.
+and leaves the server running. `huri-cli` is the reference client
+([its repository](https://github.com/Lucy-Robotics/huri-cli)); a server-only
+host, or one that brings its own client, skips it with `./install.sh --no-cli`.
 
 **Use the installer, not a bare `pip install`.** It picks the right torch build
 for your GPU, applies `constraints.txt` (without which every Ray Serve replica
 crashes — see the comments in that file), creates the virtualenv, installs
-huri-core at the pinned ref, downloads the models and writes a Serve config that
-matches your hardware. The manual path is documented
+huri-core and huri-cli at the pinned refs, downloads the models and writes a
+Serve config that matches your hardware. The manual path is documented
 [below](#usage-without-the-installer) for people who need it.
 
 ## Prerequisites
@@ -165,7 +170,7 @@ looks them up on an index:
 
 ```sh
 ref=0.1.0   # a huri-modules release tag
-core=0.4.0  # the huri-core ref in that release's HURI_CORE_REF file
+core=0.4.0  # HURI_CORE_REF in that release's versions.env
 pip install \
   "huri-core[server] @ git+https://github.com/Lucy-Robotics/huri-core.git@$core" \
   "huri-events @ git+https://github.com/Lucy-Robotics/huri-modules.git@$ref#subdirectory=packages/huri-events" \
@@ -183,11 +188,14 @@ reads the registry from.
 
 This repository has its own semver, tagged `X.Y.Z` (no `v`) on `main`; `dev`
 is the integration branch. A release is a tested set: every package of
-`packages/` at its own version, plus the huri-core ref in
-[`HURI_CORE_REF`](HURI_CORE_REF) they were all tested against — a core release
-tag on `main`; on `dev`, that tag too, or huri-core's `dev` while the modules
-follow the next core minor (with their ranges moved to it in the same change).
-The installer, the Docker images and CI all read that one file.
+`packages/` at its own version, plus the refs of the other repositories in
+[`versions.env`](versions.env) they were all tested against: `HURI_CORE_REF`,
+the huri-core ref — a core release tag on `main`; on `dev`, that tag too, or
+huri-core's `dev` while the modules follow the next core minor (with their
+ranges moved to it in the same change) — and `HURI_CLI_REF`, the huri-cli ref
+the installer adds (a huri-cli release tag on `main`, `dev` or a tag on `dev`).
+The installer, the Docker images and CI all read that one file
+(shell-sourceable `KEY=value` lines: `. ./versions.env`).
 
 | huri-modules | huri-core |
 |---|---|
@@ -202,14 +210,21 @@ release checklist.
 To develop huri-core and the modules together, point the installer at a local
 checkout instead of the git ref: `HURI_CORE_PATH=../huri-core ./install.sh`
 installs it editable (and `HURI_CORE_REF=<ref> ./install.sh` picks another ref).
+The same goes for the client: `HURI_CLI_PATH=../huri-cli` or
+`HURI_CLI_REF=<ref>`. The environment always wins over `versions.env`.
+
+The installer never lets git prompt for credentials: a repository it cannot
+read (missing, private, or a ref that does not exist) stops the install with
+the ref to fix. `--plan-only` makes no network call at all; the refs are
+resolved to commits only when installing.
 
 ## Docker images
 
 `deploy/Dockerfile.{base,nvidia,amd}` build one image per hardware target (the
 Helm values pick them per worker group). Each installs its hardware's heavy
 dependencies from the requirement files, then `deploy/install_huri.sh` installs
-huri-core from git at the `HURI_CORE_REF` build arg (default: the
-`HURI_CORE_REF` file) and every package under `packages/` (all curated events
+huri-core from git at the `HURI_CORE_REF` build arg (default: `HURI_CORE_REF`
+in `versions.env`) and every package under `packages/` (all curated events
 and modules: the head node imports each enabled module to build the app), and
 **fails the build** if a module or event does not load or the versions do not
 satisfy the modules' manifests.
@@ -220,15 +235,16 @@ The images carry one TTS engine: CosyVoice3 (`tts_cosyvoice`, deployment
 `config/huri.yaml` serve it. No image installs Piper's `piper-tts`: its
 `onnxruntime` would overwrite the nvidia image's `onnxruntime-gpu`, so `tts`
 (Piper) loads there but its replica fails on its first utterance. Piper is
-for bare metal (`./install.sh`, `config/huri_cpu.yaml`).
+for bare metal (`./install.sh`, `config/huri_cpu.yaml`). No image carries
+huri-cli either: a client runs elsewhere.
 
 When `HURI_CORE_REF` is a branch (`dev`), Docker's layer cache keeps the core
 of the first build: pass the commit it is at instead,
-`--build-arg HURI_CORE_REF="$(git ls-remote https://github.com/Lucy-Robotics/huri-core.git refs/heads/dev | cut -f1)"`,
+`--build-arg HURI_CORE_REF="$(GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/Lucy-Robotics/huri-core.git refs/heads/dev | cut -f1)"`,
 or build with `--no-cache`. A release tag does not move, so it needs neither.
 
 ```sh
-docker build -f deploy/Dockerfile.base --build-arg HURI_CORE_REF="$(cat HURI_CORE_REF)" -t huri:base .
+docker build -f deploy/Dockerfile.base --build-arg HURI_CORE_REF="$(. ./versions.env && echo "$HURI_CORE_REF")" -t huri:base .
 docker run --rm -p 8000:8000 -e HURI_MODULES=tag,qag huri:base \
   python -c "import ray; from ray import serve; from huri_core.app import build_app; ray.init(); serve.start(http_options={'host': '0.0.0.0'}); serve.run(build_app(), name='HuRI', blocking=True)"
 python deploy/smoke_session.py ws://127.0.0.1:8000/session   # a real session, no model needed
@@ -245,15 +261,16 @@ image on pull requests; the GPU images are built on demand (`workflow_dispatch`)
 counterpart of the Docker images in `deploy/` and the Helm chart in `helm/`. It
 probes the machine (GPU vendor, VRAM, RAM, disk, Python), works out which parts
 of the pipeline actually fit, and then installs only those: system packages, a
-virtualenv with the right torch build, huri-core and the curated packages, the
-model weights, Qdrant and Ollama, plus a Ray Serve config matching the plan.
+virtualenv with the right torch build, huri-core and the curated packages,
+huri-cli (unless `--no-cli`), the model weights, Qdrant and Ollama, plus a Ray
+Serve config matching the plan.
 
 It generates:
 
 | Path                                             | What                                              |
 | ------------------------------------------------ | ------------------------------------------------- |
 | `config/huri_local.generated.yaml`               | Ray Serve config for this machine                 |
-| `config/client_local.generated.yaml`             | matching client config                            |
+| `config/client_local.generated.yaml`             | matching session, plus huri-cli's `cli:` section  |
 | `.huri-local/huri.env`                           | the same runtime env vars as a plain `.env`       |
 | `.huri-local/secrets.env`                        | LLM API key, `0600`, never in the configs         |
 | `.huri-local/env.sh`                             | venv + `huri.env` + `secrets.env` in one `source` |
@@ -359,10 +376,11 @@ then restart (`.huri-local/stop.sh && .huri-local/start.sh`).
 | `torch sees the GPU but cannot launch a kernel on it`          | The torch build has no code objects for your GPU. `--only config` sets `HSA_OVERRIDE_GFX_VERSION` when a compatible same-family arch exists; otherwise run CPU-only. |
 | Client exits with `session_error: Unknown module 'x'`          | The client config lists a module the server did not register. Match it to `HURI_MODULES`, or regenerate both with `--only config`.                                   |
 | Client exits with `session_error: Module 'x' is installed but not enabled` | The server's `HURI_MODULES` does not list it (unset enables nothing). Add it there, or drop it from the client config. |
-| The server refuses to start: the installed `huri-core` is not in a module's range | The core in the venv is not the one this checkout is tested with. `./install.sh --only python` reinstalls huri-core at the commit `HURI_CORE_REF` names now (a branch such as `dev` included); or check out the huri-modules release matching your core (see [Versions](#versions-and-compatibility)). |
+| The server refuses to start: the installed `huri-core` is not in a module's range | The core in the venv is not the one this checkout is tested with. `./install.sh --only python` reinstalls huri-core at the commit `HURI_CORE_REF` (versions.env) names now (a branch such as `dev` included); or check out the huri-modules release matching your core (see [Versions](#versions-and-compatibility)). |
 | `qdrant is not answering … HuRI does not manage this instance` | Something else already owned the port when you installed, so HuRI never created its own. Start it yourself, or free the port and re-run `--only services`.           |
 | No audio from the client                                       | Check TTS is actually enabled (`grep HURI_MODULES config/huri_local.generated.yaml`) — with `--modules` or a dropped plan there may be no TTS at all.                |
 | No module loads: `entry point 'tts' is registered twice` | An environment from before huri-module-tts still has the three packages it replaced. `./install.sh --only python` removes them; otherwise `pip uninstall huri-tts huri-module-tts-piper huri-module-tts-cosyvoice`, then install huri-module-tts. |
+| `cannot reach huri-core at ref X` (or huri-cli)                | git could not read the repository (offline, or it answered 401: missing or private; git is never allowed to prompt). Check the ref in `versions.env`, or point `HURI_CORE_PATH` / `HURI_CLI_PATH` at a local checkout. |
 | Install fails with no explanation                              | Every command's output is in `.huri-local/install.log`, and the error line names the real command.                                                                   |
 
 ## Usage without the installer
@@ -388,10 +406,12 @@ a Serve `user_config`):
 python -m huri_core.launch_huri
 ```
 
-Client — the reference CLI is its own package, [examples/cli](examples/cli):
+Client — the reference CLI, [huri-cli](https://github.com/Lucy-Robotics/huri-cli),
+has its own repository:
 
 ```sh
-pip install --no-deps -e examples/cli
+pip install -c constraints.txt \
+  "huri-cli @ git+https://github.com/Lucy-Robotics/huri-cli.git@$(. ./versions.env && echo "$HURI_CLI_REF")"
 huri-cli --config config/client_local.generated.yaml
 ```
 
@@ -416,11 +436,10 @@ pip install -c constraints.txt --index-url https://download.pytorch.org/whl/rocm
 pip install -c constraints.txt -r requirements-amd.txt
 
 # huri-core at the ref this checkout is tested against, then the curated
-# events and modules and the CLI (their dependencies come from the files above)
+# events and modules (their dependencies come from the files above)
 pip install -c constraints.txt \
-  "huri-core[server,client] @ git+https://github.com/Lucy-Robotics/huri-core.git@$(cat HURI_CORE_REF)"
+  "huri-core[server,client] @ git+https://github.com/Lucy-Robotics/huri-core.git@$(. ./versions.env && echo "$HURI_CORE_REF")"
 for p in packages/*/; do pip install -c constraints.txt --no-deps -e "$p"; done
-pip install --no-deps -e examples/cli
 # the TTS engine, in no file above: Piper (module tts) is huri-module-tts's
 # `piper` extra; CosyVoice (tts_cosyvoice), see packages/huri-module-tts
 pip install -c constraints.txt -e 'packages/huri-module-tts[piper]'
@@ -436,13 +455,14 @@ from this repository with `#subdirectory=`:
 
 ```sh
 ref=0.1.0   # a huri-modules release tag
-core=0.4.0  # the huri-core ref in that release's HURI_CORE_REF file
+core=0.4.0  # HURI_CORE_REF in that release's versions.env
 CORE="git+https://github.com/Lucy-Robotics/huri-core.git@$core"
 MODS="git+https://github.com/Lucy-Robotics/huri-modules.git@$ref"
+cli=0.1.0   # a huri-cli release tag (HURI_CLI_REF in that release's versions.env)
 # a client: the SDK, the curated topics and the reference CLI (no Ray)
 pip install "huri-core[client] @ $CORE" \
   "huri-events @ $MODS#subdirectory=packages/huri-events" \
-  "huri-cli @ $MODS#subdirectory=examples/cli"
+  "huri-cli @ git+https://github.com/Lucy-Robotics/huri-cli.git@$cli"
 # a server: Ray Serve + FastAPI, then the modules (see each package's README)
 pip install "huri-core[server] @ $CORE" \
   "huri-events @ $MODS#subdirectory=packages/huri-events"
@@ -509,18 +529,16 @@ See [`packages/huri-module-stt/tests/test_stt.py`](packages/huri-module-stt/test
   one reader of the registry's schema
 - **registry.toml**, **check_registry.py**, **ACCEPTANCE.md** — the verified
   index, its CI check (with huri-hub's reader) and the listing criteria
-- **HURI_CORE_REF** — the huri-core ref this repository is built and tested
-  against; **RELEASING.md** — versions and releases
+- **versions.env** — the huri-core and huri-cli refs this repository is built
+  and tested against; **RELEASING.md** — versions and releases
 - **install.sh**, **scripts/** — the local installer (`install_local.sh`), the
   per-hardware requirement merger (`module_requirements.py`), the installer
   portability test (`test_install.sh`) and the pages' link check
   (`check_links.py`)
-- **config/** — Serve configs and client configs (`client_*.yaml`)
+- **config/** — Serve configs and the generic client session template
+  (`client_template.yaml`); the installer writes `client_local.generated.yaml`
 - **deploy/** — the Docker images, `install_huri.sh`, a session smoke test and
   Helm values examples (`deploy/examples`); **helm/** — the KubeRay chart
-- **examples/cli** — `huri-cli`, the reference command-line client: a separate
-  package built on the client SDK (microphone and prompt in; text, speech and a
-  gesture view out)
 - **tests/** — the curated set's tests; **tests/integration** — the whole
   curated pipeline in one session
 
@@ -609,7 +627,7 @@ otherwise, from git:
 
 ```sh
 ref=0.1.0   # a huri-modules release tag
-core=0.4.0  # the huri-core ref in that release's HURI_CORE_REF file
+core=0.4.0  # HURI_CORE_REF in that release's versions.env
 pip install \
   "huri-core @ git+https://github.com/Lucy-Robotics/huri-core.git@$core" \
   "huri-hub @ git+https://github.com/Lucy-Robotics/huri-modules.git@$ref#subdirectory=packages/huri-hub"
@@ -729,9 +747,12 @@ async with client:
 ```
 
 Handlers of one topic run in arrival order; different topics run concurrently.
-A client YAML (`config/client_*.yaml`) holds the same three things — `modules`,
-`send` and `subscribe` — and the reference CLI ([examples/cli](examples/cli),
-`huri-cli --config ...`) adds its device settings under `cli:`.
+A client YAML ([`config/client_template.yaml`](config/client_template.yaml))
+holds the same three things — `modules`, `send` and `subscribe` — and the
+reference CLI ([huri-cli](https://github.com/Lucy-Robotics/huri-cli),
+`huri-cli --config ...`) adds its device settings under `cli:`, as in the
+installer's `config/client_local.generated.yaml`; its example configs live in
+its repository.
 
 ## More
 

@@ -1,7 +1,7 @@
 """The exact pins of this repository (requirements*.txt, constraints.txt), which
 the images and the installer use, satisfy the ranges the installed huri-core
-declares in its extras: installing it from HURI_CORE_REF next to them must not
-need a resolver to give way."""
+declares in its extras: installing it from HURI_CORE_REF (versions.env) next to
+them must not need a resolver to give way."""
 
 import re
 from importlib.metadata import requires

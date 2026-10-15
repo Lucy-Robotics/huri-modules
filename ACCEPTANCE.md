@@ -29,7 +29,7 @@ CI (`check_registry.py --run-tests --strict`) checks the mechanical part:
   `pyproject.toml`, e.g. `tts_cosyvoice = "cosyvoice"`), the entry names that
   same `extra`, so `huri hub install` installs `<package>[<extra>]`;
 - it ships a `huri_module.toml` whose `summary` and `huri_core` match the entry;
-- HuRI's startup checks pass against the pinned `huri-core` (`HURI_CORE_REF`)
+- HuRI's startup checks pass against the pinned `huri-core` (`HURI_CORE_REF`, versions.env)
   and the curated events: its topics are registered, with the event classes it
   declares, and the installed versions are in its manifest's ranges;
 - every topic it produces belongs to an event package its manifest declares;
@@ -57,7 +57,7 @@ Merging the PR is the verification; there is no separate approval step.
   CI runs again.
 - When `huri-core` publishes a new minor version, every listed module is
   re-checked against it (CI on the huri-modules release PR that moves
-  `HURI_CORE_REF`, see RELEASING.md); entries that fail are fixed or delisted in
+  `HURI_CORE_REF` in versions.env, see RELEASING.md); entries that fail are fixed or delisted in
   the same release.
 - A verified mark is revoked (the entry removed) when the module stops passing
   CI and its maintainer does not respond within a release cycle, or on a

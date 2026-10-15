@@ -5,9 +5,10 @@
 #
 #   install_huri.sh SRC_DIR [HURI_CORE_REF]
 #
-# SRC_DIR holds packages/ and the HURI_CORE_REF file of this repository; an
+# SRC_DIR holds packages/ and the versions.env file of this repository; an
 # empty or absent HURI_CORE_REF argument (the Dockerfiles' build arg) means
-# that file's ref, the one this repository is tested against.
+# the HURI_CORE_REF of that file, the ref this repository is tested against.
+# (The images do not install huri-cli, so HURI_CLI_REF is not read here.)
 #
 # --no-deps: each image installs the heavy, hardware-specific dependencies
 # first, from its own requirement files (which also satisfy huri-core's
@@ -31,8 +32,15 @@
 set -eu
 src="${1:?usage: install_huri.sh SRC_DIR [HURI_CORE_REF]}"
 ref="${2:-}"
-[ -n "$ref" ] || ref="$(tr -d '[:space:]' <"$src/HURI_CORE_REF")"
-[ -n "$ref" ] || { echo "install_huri.sh: no huri-core ref" >&2; exit 1; }
+# The last HURI_CORE_REF= line of versions.env, without quotes, comment or
+# blanks. Read, not sourced: nothing in the file runs in the build.
+[ -n "$ref" ] || ref="$(sed -n 's/^[[:space:]]*HURI_CORE_REF=//p' "$src/versions.env" \
+  | tail -n 1 | sed 's/[[:space:]]#.*$//' | tr -d "[:space:]\"'")"
+[ -n "$ref" ] || { echo "install_huri.sh: no HURI_CORE_REF in $src/versions.env" >&2; exit 1; }
+# Never wait for credentials: a missing or private repository (HTTP 401) must
+# fail the build, not hang it on a prompt.
+export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/true
+unset SSH_ASKPASS
 echo "huri-core: git ref $ref"
 
 set --

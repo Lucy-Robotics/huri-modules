@@ -45,7 +45,8 @@ from typing import Dict, List, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 VARIANTS = ("cpu", "nvidia", "amd")
-# Never from an index: huri-core is installed from git at HURI_CORE_REF, the
+# Never from an index: huri-core is installed from git at HURI_CORE_REF (in
+# versions.env), the
 # rest from packages/ themselves (editable, --no-deps). packages/ also holds a
 # tool (huri-hub): it provides no huri.modules entry point, so it is never one
 # of the packages merged here.
