@@ -6,6 +6,7 @@ repository root reads the real file).
 """
 
 import json
+import os
 import subprocess
 import sys
 import tomllib
@@ -307,9 +308,19 @@ def test_huri_hub_is_a_huri_command_and_a_script_of_its_own():
 
 
 def test_huri_runs_it_as_huri_hub(capsys, registry):
-    core_cli = pytest.importorskip("huri_core.cli")
-    if not hasattr(core_cli, "COMMANDS_GROUP"):
-        pytest.skip("this huri-core's `huri` does not run huri.commands yet")
+    from huri_core import cli as core_cli
+
+    # A huri-core from before the huri.commands dispatcher runs its own, older
+    # `huri hub` instead: huri-hub needs a newer one (RELEASING.md). Only a
+    # deliberate run against such a core may skip this.
+    if not hasattr(core_cli, "COMMANDS_GROUP") and os.environ.get(
+        "HURI_ALLOW_OLD_CORE"
+    ):
+        pytest.skip("HURI_ALLOW_OLD_CORE: this huri-core's `huri` has no dispatcher")
+    assert hasattr(core_cli, "COMMANDS_GROUP"), (
+        "this huri-core's `huri` does not run the huri.commands entry points; "
+        "huri-hub needs a huri-core with that dispatcher"
+    )
     assert core_cli.main(["hub", "list", "--verified", "--registry", registry]) == 0
     assert "stt" in capsys.readouterr().out
 

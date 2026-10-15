@@ -30,6 +30,11 @@ package):
   minor bump while `0.x` when an older huri-hub cannot read the new registry
   (`huri hub` then tells its users to upgrade huri-hub or pin
   `HURI_MODULES_REF` to an older release), a patch otherwise.
+  huri-hub needs a huri-core whose `huri` runs the `huri.commands` entry
+  points (the first `0.4.0` tag has it): an older core runs its own built-in
+  `huri hub` instead. `HURI_CORE_REF` must point at such a core, or
+  huri-hub's `test_huri_runs_it_as_huri_hub` fails (`HURI_ALLOW_OLD_CORE=1`
+  skips it, for a deliberate run against an older core only).
 
 Packages pin huri-core with a range of one minor version: today
 `huri-core>=0.4.0.dev0,<0.5` (in each `pyproject.toml`, `huri_module.toml` and
