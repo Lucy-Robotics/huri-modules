@@ -44,6 +44,11 @@ export PYTHONPATH=/opt/cosyvoice:/opt/cosyvoice/third_party/Matcha-TTS
 HURI_MODULES=...,tts_cosyvoice ...   # instead of tts; see the env vars in huri_tts/cosyvoice/handle.py
 ```
 
+`huri hub install tts_cosyvoice` (or `pip install
+'huri-module-tts[cosyvoice]'`) does only the second line: torch and torchaudio,
+unpinned. The pins, the CosyVoice checkout and `PYTHONPATH` stay the steps
+above (`./install.sh --tts-engine cosyvoice` does all of them).
+
 Use `tts_cosyvoice` in place of `tts` in the server's `HURI_MODULES` and the
 client's `modules:`, and name its Serve deployment `CosyVoiceTTSHandle`.
 

@@ -16,11 +16,12 @@ installing is not enabling (HURI_MODULES does that, on the server).
 import argparse
 import os
 import re
+import shlex
 import subprocess
 import sys
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import PackageNotFoundError, distributions, version
 from pathlib import Path
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from huri_hub.community import TOPIC, catalog, read_repository, search
 from huri_hub.registry import (
@@ -32,7 +33,19 @@ from huri_hub.registry import (
     read_registry,
 )
 from huri_hub.web import Fetch, HubError, Warn, http_fetch, warn_stderr
+from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
+
+# Distributions a curated package replaced. Left installed next to it, they
+# register its module names with other targets (huri-core then loads no module
+# at all), or own some of its files.
+REPLACED = {
+    "huri-module-tts": (
+        "huri-tts",
+        "huri-module-tts-piper",
+        "huri-module-tts-cosyvoice",
+    ),
+}
 
 
 def installed_core_version() -> str:
@@ -42,6 +55,32 @@ def installed_core_version() -> str:
         from huri_core import __version__
 
         return __version__
+
+
+def installed_distributions() -> Dict[str, Set[str]]:
+    """The installed distributions (normalized names), each with the names of
+    the huri.modules entry points it registers."""
+    found: Dict[str, Set[str]] = {}
+    for dist in distributions():
+        name = canonicalize_name(dist.metadata["Name"] or "")
+        found.setdefault(name, set()).update(
+            ep.name for ep in dist.entry_points if ep.group == "huri.modules"
+        )
+    return found
+
+
+def stale_distributions(
+    module: str, package: str, installed: Dict[str, Set[str]]
+) -> List[str]:
+    """Installed distributions other than `package` that would clash with it:
+    one registering `module` too, or one `package` replaced."""
+    own = canonicalize_name(package)
+    replaced = {canonicalize_name(d) for d in REPLACED.get(own, ())}
+    return sorted(
+        dist
+        for dist, modules in installed.items()
+        if dist != own and (module in modules or dist in replaced)
+    )
 
 
 def _registry_location(option: Optional[str], warn: Warn = warn_stderr) -> str:
@@ -156,9 +195,21 @@ def cmd_install(args: Any, fetch: Fetch, out: Callable[[str], None]) -> int:
                 f"{name!r} supports huri-core {module.huri_core}, but {core} is "
                 f"installed. {hint}, or install it by URL."
             )
+        if module.package:
+            stale = stale_distributions(name, module.package, installed_distributions())
+            if stale:
+                raise HubError(
+                    f"{', '.join(stale)} would clash with {module.package} (the same "
+                    "module names, or files it replaced): huri-core would load no "
+                    f"module. Remove them first: pip uninstall {' '.join(stale)}"
+                )
         targets = [module.install, *registry.companions(module, fetch)]
+        readme = _readme(module, registry)
+    else:
+        readme = None
     command = [sys.executable, "-m", "pip", "install", *targets]
-    out("$ " + " ".join(command))
+    # Quoted: "<package>[<extra>] @ <url>" is one argument, and [..] a glob.
+    out("$ " + shlex.join(command))
     if not args.dry_run:
         code = subprocess.call(command)
         if code != 0:
@@ -168,7 +219,26 @@ def cmd_install(args: Any, fetch: Fetch, out: Callable[[str], None]) -> int:
         "Installed, not enabled. To use it, add it to the server's HURI_MODULES and "
         f"to the client config:\n  modules:\n    {label}:\n      name: {label}"
     )
+    if readme:
+        # pip installs the package and its extra; model weights, hardware pins
+        # (requirements-<variant>[.<module>].txt) or a setup script are not
+        # pip's to install.
+        out(
+            "What else it may need before it runs (model weights, hardware pins, "
+            f"a setup script) is in its README: {readme}"
+        )
     return 0
+
+
+def _readme(module: HubModule, registry: Registry) -> Optional[str]:
+    """Where the README of a curated module's package is: in the checkout the
+    registry was read from, else on GitHub at the registry's ref."""
+    path = module.curated_path
+    if path is None:
+        return None
+    if registry.checkout is not None and (registry.checkout / path).is_dir():
+        return str(registry.checkout / path / "README.md")
+    return f"https://github.com/{HURI_MODULES_REPO}/tree/{registry.ref}/{path}#readme"
 
 
 def _prog(argv: Optional[List[str]]) -> str:

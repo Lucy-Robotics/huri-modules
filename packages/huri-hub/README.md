@@ -39,6 +39,19 @@ installs `huri-module-tts[cosyvoice]`) and the curated packages they depend on
 (huri-events) in the same pip command; verified third-party modules at their
 reviewed tag. Nothing found is ever
 loaded: enabling a module stays the server operator's `HURI_MODULES` decision.
+
+pip installs the package and its extra, not what a module may need besides:
+model weights, exact hardware pins (`requirements-<variant>[.<module>].txt`) or
+a setup script. `huri hub install tts_cosyvoice`, for one, brings torch and
+torchaudio unpinned, but not CosyVoice's pins, its checkout
+(`install_cosyvoice.sh`) nor its `PYTHONPATH`; after a curated module, the
+command prints where its package's README says what is left.
+
+It refuses a module when another installed distribution registers the same
+module name, or is one its package replaced (huri-module-tts replaced
+huri-tts, huri-module-tts-piper and huri-module-tts-cosyvoice): huri-core would
+then load no module at all. It names them, to remove with
+`pip uninstall huri-tts huri-module-tts-piper huri-module-tts-cosyvoice` first.
 `GITHUB_TOKEN` raises GitHub's rate limit.
 
 `huri_hub.registry` is the one reader of the registry schema: huri-modules'

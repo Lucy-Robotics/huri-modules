@@ -7,6 +7,7 @@ repository root reads the real file).
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tomllib
@@ -68,6 +69,7 @@ def isolated(monkeypatch, tmp_path):
     for var in ("HURI_MODULES_REF", "HURI_REGISTRY", "HURI_REF"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(cli, "installed_core_version", lambda: "0.4.0")
+    monkeypatch.setattr(cli, "installed_distributions", lambda: {})
 
 
 SERVO_PYPROJECT = """
@@ -134,6 +136,13 @@ def fetch(url):
 def run(argv, capsys):
     code = cli.main(argv, fetch=fetch)
     return code, capsys.readouterr().out
+
+
+def pip_targets(out):
+    """The targets of the printed pip command, as the shell splits it."""
+    line = next(line for line in out.splitlines() if line.startswith("$ "))
+    args = shlex.split(line[2:])
+    return args[args.index("install") + 1 :]
 
 
 def test_search_lists_tagged_repositories(capsys):
@@ -206,7 +215,7 @@ def test_a_verified_third_party_module_installs_at_its_reviewed_tag(capsys, regi
     code, out = run(["install", "lights", "--dry-run", "--registry", registry], capsys)
     assert code == 0 and "lights: verified" in out
     target = "git+https://github.com/acme/huri-lights@0.2.0#subdirectory=module"
-    assert f"pip install {target}" in out
+    assert pip_targets(out)[0] == target
 
 
 def test_a_git_source_must_pin_a_tag(capsys, tmp_path):
@@ -451,7 +460,70 @@ def test_an_entry_with_an_extra_installs_its_package_with_it(capsys, checkout):
         ["install", "tts", "--dry-run", "--registry", str(checkout)], capsys
     )
     assert code == 0
-    assert f"pip install {tts}[piper] {checkout / 'packages' / 'huri-events'}\n" in out
+    events = checkout / "packages" / "huri-events"
+    # Quoted, so the printed command can be pasted ([..] is a shell glob).
+    assert f"pip install '{tts}[piper]' {events}\n" in out
+
+
+def test_the_printed_command_keeps_a_named_target_one_argument(capsys, monkeypatch):
+    """`<package>[<extra>] @ <url>` holds spaces and a glob: printed as one
+    shell word, it pastes as is."""
+    monkeypatch.setenv("HURI_MODULES_REF", "0.1.0")
+    url = "https://example.org/registry.toml"
+    remote = {url: REGISTRY_TEXT + TTS_ENTRIES}
+    code = cli.main(
+        ["install", "tts", "--dry-run", "--registry", url], fetch=remote.get
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    command = next(line[2:] for line in out.splitlines() if line.startswith("$ "))
+    target = (
+        "huri-module-tts[piper] @ git+https://github.com/Lucy-Robotics/"
+        "huri-modules.git@0.1.0#subdirectory=packages/huri-module-tts"
+    )
+    assert target in shlex.split(command)
+    readme = (
+        "https://github.com/Lucy-Robotics/huri-modules/tree/0.1.0/"
+        "packages/huri-module-tts#readme"
+    )
+    assert f"in its README: {readme}" in out
+
+
+def test_a_curated_module_points_at_its_readme_in_the_checkout(capsys, checkout):
+    _, out = run(["install", "stt", "--dry-run", "--registry", str(checkout)], capsys)
+    readme = checkout / "packages" / "huri-module-stt" / "README.md"
+    assert f"in its README: {readme}" in out
+
+
+def test_the_distributions_huri_module_tts_replaced_are_refused(
+    capsys, checkout, monkeypatch
+):
+    """Left installed, they register `tts` with another target: huri-core
+    would then load no module at all."""
+    (checkout / "registry.toml").write_text(REGISTRY_TEXT + TTS_ENTRIES)
+    (checkout / "packages" / "huri-module-tts").mkdir()
+    installed = {
+        "huri-tts": set(),
+        "huri-module-tts-piper": {"tts"},
+        "huri-module-tts": {"tts", "tts_cosyvoice"},
+        "huri-module-stt": {"stt"},
+    }
+    monkeypatch.setattr(cli, "installed_distributions", lambda: installed)
+    argv = ["install", "tts", "--dry-run", "--registry", str(checkout)]
+    assert cli.main(argv, fetch=fetch) == 1
+    err = capsys.readouterr().err
+    assert "pip uninstall huri-module-tts-piper huri-tts" in err
+    # Reinstalling a package over itself, or next to unrelated ones, is fine.
+    del installed["huri-tts"], installed["huri-module-tts-piper"]
+    code, _ = run(argv, capsys)
+    assert code == 0
+
+
+def test_another_distribution_registering_the_name_is_refused():
+    assert cli.stale_distributions(
+        "stt", "huri-module-stt", {"acme-stt": {"stt"}, "huri-module-stt": {"stt"}}
+    ) == ["acme-stt"]
+    assert cli.stale_distributions("stt", "Huri_Module_Stt", {}) == []
 
 
 def test_an_extra_names_the_package_in_a_url_target(monkeypatch):
@@ -511,7 +583,7 @@ def test_install_stt_brings_huri_events_from_huri_modules_at_the_same_ref(
     repo = "git+https://github.com/Lucy-Robotics/huri-modules.git@0.1.0"
     stt = f"{repo}#subdirectory=packages/huri-module-stt"
     events = f"{repo}#subdirectory=packages/huri-events"
-    assert f"pip install {stt} {events}\n" in out
+    assert pip_targets(out) == [stt, events]
 
 
 def test_a_curated_module_brings_the_curated_libraries_it_depends_on(capsys, checkout):
@@ -542,7 +614,7 @@ def test_a_verified_third_party_module_also_gets_the_curated_events(
 ):
     _, out = run(["install", "lights", "--dry-run", "--registry", registry], capsys)
     lights = "git+https://github.com/acme/huri-lights@0.2.0#subdirectory=module"
-    assert f"pip install {lights} {checkout / 'packages' / 'huri-events'}\n" in out
+    assert pip_targets(out) == [lights, str(checkout / "packages" / "huri-events")]
 
 
 def test_a_huri_modules_registry_url_installs_from_its_own_ref(capsys, monkeypatch):

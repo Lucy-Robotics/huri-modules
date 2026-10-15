@@ -629,7 +629,12 @@ or from the checkout it read, with the extra of their package they need
 (`extra`) and the curated packages they depend on (huri-events) in the same
 pip command; verified third-party ones at
 their pinned tag. A module whose `huri_core` range excludes the installed
-huri-core is refused rather than letting pip replace huri-core. Community
+huri-core is refused rather than letting pip replace huri-core, and so is one
+another installed distribution already registers (or that its package
+replaced: `pip uninstall huri-tts huri-module-tts-piper
+huri-module-tts-cosyvoice` before huri-module-tts). pip brings the package and
+its extra only: model weights, hardware pins and setup scripts (CosyVoice's
+checkout) are in the package's README, which it points to. Community
 modules are read from their `pyproject.toml` and `huri_module.toml` on GitHub
 without installing them, and listed when their manifest supports the huri-core
 version. Nothing found is ever loaded: enabling a module stays the server

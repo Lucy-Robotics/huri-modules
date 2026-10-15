@@ -110,6 +110,8 @@ class HubModule:
     curated_path: Optional[str] = None
     # The extra of its package the module needs (registry `extra`), if any.
     extra: Optional[str] = None
+    # The distribution providing it (registry `package`); None when unknown.
+    package: Optional[str] = None
 
     def supports(self, core_version: str) -> Optional[bool]:
         """Whether this module supports that huri-core; None if unknown."""
@@ -430,6 +432,7 @@ def read_registry(
                 verified=True,
                 curated_path=str(source["path"]) if "path" in source else None,
                 extra=extra,
+                package=str(entry["package"]),
             )
         )
     return Registry(location, ref, checkout, modules, events)
