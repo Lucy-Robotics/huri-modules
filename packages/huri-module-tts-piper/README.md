@@ -14,4 +14,10 @@ python -m piper.download_voices --download-dir assets/models/piper en_US-lessac-
 HURI_PIPER_VOICE=assets/models/piper/en_US-lessac-medium.onnx HURI_MODULES=...,tts ...
 ```
 
-Laid out to move as-is to its own `huri-module-tts-piper` repository.
+A self-contained distribution of
+[huri-modules](https://github.com/Lucy-Robotics/huri-modules), versioned in its
+`pyproject.toml` (see RELEASING.md there). Without a checkout:
+
+```sh
+pip install "huri-module-tts-piper @ git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=packages/huri-module-tts-piper"
+```

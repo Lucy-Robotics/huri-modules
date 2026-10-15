@@ -8,4 +8,12 @@ package subclasses it and sets `_handle_cls` to a Serve deployment exposing
 `stream_audio(sid)`.
 
 A library only: it registers no module. Used by `huri-module-tts-piper` and
-`huri-module-tts-cosyvoice`; laid out to move as-is to its own repository.
+`huri-module-tts-cosyvoice`.
+
+A self-contained distribution of
+[huri-modules](https://github.com/Lucy-Robotics/huri-modules), versioned in its
+`pyproject.toml` (see RELEASING.md there). Without a checkout:
+
+```sh
+pip install "huri-tts @ git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=packages/huri-tts"
+```

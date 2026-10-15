@@ -7,9 +7,14 @@ Voice activity detection (WebRTC VAD): microphone frames in, speech segments out
 | `vad` | `huri.audio.in` → `huri.voice` | Detects speech in microphone frames (WebRTC VAD) |
 
 ```sh
-pip install -e packages/huri-module-vad     # from a HuRI checkout, next to huri-core and huri-events
+pip install -e packages/huri-module-vad     # from a huri-modules checkout, next to huri-core and huri-events
 HURI_MODULES=vad ...   # enable it on the server
 ```
 
-This directory is a self-contained distribution, laid out to move as-is to its
-own `huri-module-vad` repository.
+A self-contained distribution of
+[huri-modules](https://github.com/Lucy-Robotics/huri-modules), versioned in its
+`pyproject.toml` (see RELEASING.md there). Without a checkout:
+
+```sh
+pip install "huri-module-vad @ git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=packages/huri-module-vad"
+```

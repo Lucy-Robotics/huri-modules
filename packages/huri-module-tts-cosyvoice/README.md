@@ -21,4 +21,10 @@ HURI_MODULES=...,tts_cosyvoice ...   # instead of tts; see the env vars in handl
 Use it in place of `tts` in the server's `HURI_MODULES` and the client's
 `modules:`, and name its Serve deployment `CosyVoiceTTSHandle`.
 
-Laid out to move as-is to its own `huri-module-tts-cosyvoice` repository.
+A self-contained distribution of
+[huri-modules](https://github.com/Lucy-Robotics/huri-modules), versioned in its
+`pyproject.toml` (see RELEASING.md there). Without a checkout:
+
+```sh
+pip install "huri-module-tts-cosyvoice @ git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=packages/huri-module-tts-cosyvoice"
+```

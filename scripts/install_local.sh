@@ -2714,7 +2714,7 @@ PY
     # has no later provisioning step: if the file is not here now, it never
     # will be, and every TTS session will fail per-request (each error is
     # logged but swallowed by the event graph, so the client just gets no
-    # audio — see huri_core/core/events.py::EventGraph._run). Treat it as a hard
+    # audio — see huri-core's huri_core/core/events.py::EventGraph._run). Treat it as a hard
     # requirement rather than the best-effort skip TTSHandle allows.
     if [[ -f "$ASSETS_DIR/voice.wav" ]]; then
       ok "voice sample present at $ASSETS_DIR/voice.wav"
