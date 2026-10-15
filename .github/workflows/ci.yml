@@ -4,8 +4,8 @@
 # HURI_CORE_REF in versions.env (blocking), and against huri-core's `dev`
 # branch as a canary (non-blocking), so a breaking change in core shows up here
 # before a release. huri-cli is not tested here: it has its own repository and
-# CI (the installer's plan job and the nightly install.yml exercise installing
-# it).
+# CI (the plan job checks it is planned, and --no-cli; the nightly install.yml
+# installs and imports it).
 #
 # The expensive "does it actually install" run lives in install.yml, and the
 # GPU paths live in gpu.yml (self-hosted — no hosted runner has a GPU).

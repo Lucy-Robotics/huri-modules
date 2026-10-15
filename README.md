@@ -238,9 +238,10 @@ The images carry one TTS engine: CosyVoice3 (`tts_cosyvoice`, deployment
 for bare metal (`./install.sh`, `config/huri_cpu.yaml`). No image carries
 huri-cli either: a client runs elsewhere.
 
-When `HURI_CORE_REF` is a branch (`dev`), Docker's layer cache keeps the core
-of the first build: pass the commit it is at instead,
-`--build-arg HURI_CORE_REF="$(GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/Lucy-Robotics/huri-core.git refs/heads/dev | cut -f1)"`,
+When `HURI_CORE_REF` is a branch (`dev`), it is resolved when that layer is
+built, and Docker's layer cache keeps the commit it got: pass the commit the
+branch is at now instead,
+`--build-arg HURI_CORE_REF="$(GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/true SSH_ASKPASS= git ls-remote https://github.com/Lucy-Robotics/huri-core.git refs/heads/dev | cut -f1)"`,
 or build with `--no-cache`. A release tag does not move, so it needs neither.
 
 ```sh
@@ -250,9 +251,7 @@ docker run --rm -p 8000:8000 -e HURI_MODULES=tag,qag huri:base \
 python deploy/smoke_session.py ws://127.0.0.1:8000/session   # a real session, no model needed
 ```
 
-A branch ref (`dev`) is resolved when that layer is built, and Docker's cache
-keeps the commit it got until the layer is rebuilt (`--no-cache`); a release
-tag does not move. CI (`.github/workflows/docker.yml`) builds and runs the base
+CI (`.github/workflows/docker.yml`) builds and runs the base
 image on pull requests; the GPU images are built on demand (`workflow_dispatch`).
 
 ## Local install (single machine, no Kubernetes)

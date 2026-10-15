@@ -8,6 +8,9 @@
 # Keep COSYVOICE_COMMIT in step with deploy/Dockerfile.nvidia and
 # scripts/install_local.sh.
 set -euo pipefail
+# Git never prompts for credentials: an unreachable repository fails instead.
+export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/true GCM_INTERACTIVE=never
+unset SSH_ASKPASS
 COSYVOICE_REPO="https://github.com/FunAudioLLM/CosyVoice.git"
 COSYVOICE_COMMIT="074ca6dc9e80a2f424f1f74b48bdd7d3fea531cc"
 dest="${1:?usage: install_cosyvoice.sh DEST_DIR}"
