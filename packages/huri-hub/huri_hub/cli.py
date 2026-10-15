@@ -32,7 +32,7 @@ from huri_hub.registry import (
     find_local_registry,
     read_registry,
 )
-from huri_hub.web import Fetch, HubError, Warn, http_fetch, warn_stderr
+from huri_hub.web import Fetch, HubError, Warn, git_env, http_fetch, warn_stderr
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 
@@ -211,8 +211,14 @@ def cmd_install(args: Any, fetch: Fetch, out: Callable[[str], None]) -> int:
     # Quoted: "<package>[<extra>] @ <url>" is one argument, and [..] a glob.
     out("$ " + shlex.join(command))
     if not args.dry_run:
-        code = subprocess.call(command)
+        # pip clones git+https targets: never let git prompt for a login.
+        code = subprocess.call(command, env=git_env())
         if code != 0:
+            if any("git+" in target for target in targets):
+                warn_stderr(
+                    "pip failed; a git repository it could not read (missing, "
+                    "private, or a wrong tag) is not prompted for credentials"
+                )
             return code
     label = name or "<module name>"
     out(

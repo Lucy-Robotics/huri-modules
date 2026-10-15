@@ -44,7 +44,6 @@ server.
 """
 
 import argparse
-import os
 import subprocess
 import sys
 import tomllib
@@ -58,7 +57,7 @@ from huri_hub.registry import (
     check_source,
     parse,
 )
-from huri_hub.web import HubError
+from huri_hub.web import HubError, git_env
 from packaging.requirements import Requirement
 
 from huri_core.core.compat import CompatibilityError, check_manifests, check_modules
@@ -215,7 +214,7 @@ def remote_tag(git_url: str, tag: str) -> Optional[str]:
         ],
         capture_output=True,
         text=True,
-        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        env=git_env(),
     )
     if res.returncode != 0:
         return None

@@ -4,10 +4,11 @@ Every reader takes a `Fetch`, so the tests fake every URL.
 """
 
 import os
+import shutil
 import sys
 import urllib.error
 import urllib.request
-from typing import Callable, Optional
+from typing import Callable, Dict, Mapping, Optional
 
 GITHUB_API = "https://api.github.com"
 RAW = "https://raw.githubusercontent.com/{repo}/{ref}/{path}"
@@ -20,6 +21,22 @@ Warn = Callable[[str], None]
 
 class HubError(RuntimeError):
     pass
+
+
+def git_env(environ: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
+    """`environ` (default: this process's) for a git process, pip's git+https
+    installs included, that must never wait for credentials: no terminal
+    prompt, an askpass that answers nothing, no desktop askpass (SSH_ASKPASS)
+    and no interactive credential manager. A repository that is missing or
+    private (HTTP 401) then fails at once instead of asking for a login."""
+    env = dict(os.environ if environ is None else environ)
+    env.update(
+        GIT_TERMINAL_PROMPT="0",
+        GIT_ASKPASS=shutil.which("true") or "echo",
+        GCM_INTERACTIVE="never",
+    )
+    env.pop("SSH_ASKPASS", None)
+    return env
 
 
 def warn_stderr(message: str) -> None:

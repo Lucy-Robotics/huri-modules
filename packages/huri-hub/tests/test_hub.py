@@ -257,6 +257,28 @@ def test_install_by_url_and_unknown_name(capsys, registry):
     assert code == 1 and "no module named 'nope'" in capsys.readouterr().err
 
 
+def test_git_never_prompts_for_credentials():
+    env = web.git_env({"PATH": "/bin", "SSH_ASKPASS": "/usr/bin/ksshaskpass"})
+    assert env["GIT_TERMINAL_PROMPT"] == "0" and env["GCM_INTERACTIVE"] == "never"
+    assert env["GIT_ASKPASS"] and "SSH_ASKPASS" not in env and env["PATH"] == "/bin"
+
+
+def test_install_runs_pip_with_git_unable_to_prompt(monkeypatch, capsys):
+    seen = {}
+
+    def call(command, env=None):
+        seen.update(command=command, env=env)
+        return 1  # as when git cannot read a private repository
+
+    monkeypatch.setenv("SSH_ASKPASS", "/usr/bin/ksshaskpass")
+    monkeypatch.setattr(cli.subprocess, "call", call)
+    code = cli.main(["install", "git+https://example.org/private.git"], fetch=fetch)
+    assert code == 1
+    assert seen["env"]["GIT_TERMINAL_PROMPT"] == "0"
+    assert "SSH_ASKPASS" not in seen["env"]
+    assert "not prompted for credentials" in capsys.readouterr().err
+
+
 def test_remote_registry_installs_from_huri_modules_at_the_same_ref(monkeypatch):
     modules = {
         m.name: m
