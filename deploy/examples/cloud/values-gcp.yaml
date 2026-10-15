@@ -60,7 +60,9 @@ ray:
           env_vars:
             # Modules this server enables (default-deny: unset enables none).
             # Keep in step with the *Handle deployments below.
-            HURI_MODULES: "vad,stt,tag,emo,eag,qag,rag,tts,mov"
+            # TTS is CosyVoice3 (tts_cosyvoice, deployment CosyVoiceTTSHandle):
+            # the nvidia image ships its stack, and no image ships Piper's (`tts`).
+            HURI_MODULES: "vad,stt,tag,emo,eag,qag,rag,tts_cosyvoice,mov"
             RAY_COLOR_PREFIX: "1"
             HURI_GESTURE_CONTEXT_SEC: "2.0"
             HURI_GESTURE_MIN_CHUNK_SEC: "0.5"
@@ -160,7 +162,7 @@ ray:
               llm_provider: "vllm"
               llm_model: "huri-fast"
               verify_ssl: true
-          - name: TTSHandle
+          - name: CosyVoiceTTSHandle
             # Streaming synth runs per-utterance in a thread (run_in_executor),
             # so one replica already serves several sessions; replicas pack onto
             # the A100 at 0.1 each for more concurrent utterances.

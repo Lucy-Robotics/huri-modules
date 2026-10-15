@@ -47,11 +47,13 @@ modules:
       max_length: 1024
     logging: INFO
   tts:
+    # Piper, as config/huri_cpu.yaml serves it; against a CosyVoice3 server
+    # (config/huri.yaml, the deploy/examples Helm values) use tts_cosyvoice.
     name: tts
-    # No args: TTS.__init__ takes only the deployment handle, so any key here is
-    # a TypeError at session start. `min_clause_chars` was a leftover from a
-    # design where HuRI buffered clauses itself — CosyVoice's frontend does the
-    # segmentation now.
+    # No args: both engines' __init__ take only the deployment handle, so any
+    # key here is a TypeError at session start. `min_clause_chars` was a
+    # leftover from a design where HuRI buffered clauses itself — each engine
+    # segments the text now.
     logging: INFO
   mov:
     name: mov

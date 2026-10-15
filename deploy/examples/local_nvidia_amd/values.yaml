@@ -31,8 +31,10 @@ ray:
         runtime_env:
           env_vars:
             # Modules this server enables (default-deny: unset enables none).
-            # Keep in step with the *Handle deployments below.
-            HURI_MODULES: "vad,stt,tag,emo,eag,qag,rag,tts,mov"
+            # Keep in step with the *Handle deployments below. TTS is CosyVoice3
+            # (tts_cosyvoice, deployment CosyVoiceTTSHandle): the nvidia image
+            # ships its stack, and no image ships Piper's (`tts`).
+            HURI_MODULES: "vad,stt,tag,emo,eag,qag,rag,tts_cosyvoice,mov"
             RAY_COLOR_PREFIX: "1"
             # Gesture sliding-window defaults. The Gesture *module* runs in the
             # HuRI (CPU) actor, so these live app-wide here rather than on the
@@ -97,7 +99,7 @@ ray:
           # gesture is given the remainder. Tune these two pairs together so
           # they sum to <= 1.0. To also cap gesture's actual VRAM allocation,
           # set HURI_GESTURE_GPU_MEM_FRACTION on the nvidia worker (see below).
-          - name: TTSHandle
+          - name: CosyVoiceTTSHandle
             ray_actor_options:
               num_cpus: 1
               num_gpus: 0.8

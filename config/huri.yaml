@@ -41,8 +41,10 @@ applications:
     runtime_env:
       env_vars:
         # Modules this server enables (default-deny: unset enables none).
-        # Keep in step with the *Handle deployments below.
-        HURI_MODULES: "vad,stt,tag,emo,eag,qag,rag,tts,mov"
+        # Keep in step with the *Handle deployments below. TTS is CosyVoice3
+        # (tts_cosyvoice, deployment CosyVoiceTTSHandle; config/huri_cpu.yaml
+        # runs Piper's `tts` instead).
+        HURI_MODULES: "vad,stt,tag,emo,eag,qag,rag,tts_cosyvoice,mov"
         OLLAMA_BASE_URL: "http://localhost:11434"
         OLLAMA_API_KEY: "ollama"
 
@@ -129,7 +131,7 @@ applications:
       # These fractions must sum to <= the --num-gpus you pass to `ray start`.
       # As written STT(0.5) + TTS(0.8) + Gesture(0.2) = 1.5, so use
       # --num-gpus=2 (e.g. two physical GPUs), or lower the fractions to fit 1.
-      - name: TTSHandle
+      - name: CosyVoiceTTSHandle
         ray_actor_options:
           num_cpus: 1
           num_gpus: 0.8

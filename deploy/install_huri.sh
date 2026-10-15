@@ -17,6 +17,11 @@
 # its heavy dependencies lazily), while HURI_MODULES and the Serve config
 # decide what actually runs where.
 #
+# TTS: the images carry CosyVoice3's stack only (module tts_cosyvoice, the
+# nvidia image's requirement file). Piper's piper-tts (module tts, the `piper`
+# extra of huri-module-tts) is in none of them: its onnxruntime would replace
+# onnxruntime-gpu. `tts` loads, but its replica fails at its first utterance.
+#
 # huri-hub (`huri hub`) is left out: it pip-installs modules on a workstation,
 # while an image runs the modules baked into it at build time, and a pod that
 # installed more at runtime would drift from its image.

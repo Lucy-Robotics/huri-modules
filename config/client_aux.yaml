@@ -49,6 +49,7 @@ modules:
       max_length: 1024
     logging: INFO
   tts:
+    # Piper; against a CosyVoice3 server (config/huri.yaml) use tts_cosyvoice.
     name: tts
     logging: INFO
   mov:

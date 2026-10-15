@@ -214,6 +214,14 @@ and modules: the head node imports each enabled module to build the app), and
 **fails the build** if a module or event does not load or the versions do not
 satisfy the modules' manifests.
 
+The images carry one TTS engine: CosyVoice3 (`tts_cosyvoice`, deployment
+`CosyVoiceTTSHandle`), whose stack the nvidia image installs
+(`requirements-nvidia.txt`), as the Helm examples in `deploy/examples` and
+`config/huri.yaml` serve it. No image installs Piper's `piper-tts`: its
+`onnxruntime` would overwrite the nvidia image's `onnxruntime-gpu`, so `tts`
+(Piper) loads there but its replica fails on its first utterance. Piper is
+for bare metal (`./install.sh`, `config/huri_cpu.yaml`).
+
 When `HURI_CORE_REF` is a branch (`dev`), Docker's layer cache keeps the core
 of the first build: pass the commit it is at instead,
 `--build-arg HURI_CORE_REF="$(git ls-remote https://github.com/Lucy-Robotics/huri-core.git refs/heads/dev | cut -f1)"`,
