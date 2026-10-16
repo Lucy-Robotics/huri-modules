@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 # Light on purpose: a workstation tool, no ray, no torch. huri-core's base
 # install is enough (module manifests, the `huri` command).
 dependencies = [
-  "huri-core>=0.4.0.dev0,<0.5",
+  "huri-core>=0.4,<0.5",
   # Version ranges of the registry and of module manifests.
   "packaging>=23",
   "tomli>=2; python_version < '3.11'",

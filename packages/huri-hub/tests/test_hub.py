@@ -30,7 +30,7 @@ source = { path = "packages/huri-events" }
 name = "stt"
 package = "huri-module-stt"
 summary = "Speech to text"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-stt" }
 
@@ -38,7 +38,7 @@ source = { path = "packages/huri-module-stt" }
 name = "lights"
 package = "huri-module-lights"
 summary = "Mood lighting, a verified third-party module"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 [module.source]  # pinned as a git submodule of huri-modules, at the same tag
 git = "https://github.com/acme/huri-lights"
@@ -84,11 +84,11 @@ summary = "Gesture to servo angle arrays"
 input = { topic = "huri.motion", event = "huri_events.motion:Motion" }
 output = { topic = "acme.servo_angles", event = "huri_events_servo:ServoAngles" }
 requires = { actuation = true }
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 """
 OLD_PYPROJECT = SERVO_PYPROJECT.replace("servo", "oldie")
 OLD_MANIFEST = SERVO_MANIFEST.replace("servo", "oldie").replace(
-    ">=0.4.0.dev0,<0.5", ">=0.2,<0.3"
+    ">=0.4,<0.5", ">=0.2,<0.3"
 )
 
 
@@ -231,7 +231,7 @@ def test_a_module_for_another_core_is_not_installed(capsys, registry, monkeypatc
     argv = ["install", "stt", "--dry-run", "--registry", registry]
     assert cli.main(argv, fetch=fetch) == 1
     err = capsys.readouterr().err
-    assert "supports huri-core >=0.4.0.dev0,<0.5, but 0.5.0" in err
+    assert "supports huri-core >=0.4,<0.5, but 0.5.0" in err
     assert "HURI_MODULES_REF" in err
 
 
@@ -447,7 +447,7 @@ def test_its_dependencies_are_its_own():
     # Version ranges and TOML: huri-hub declares them, so it needs no extra of
     # huri-core (the base install, with no third-party dependency, is enough).
     requires = PYPROJECT["dependencies"]
-    assert "huri-core>=0.4.0.dev0,<0.5" in requires
+    assert "huri-core>=0.4,<0.5" in requires
     assert "packaging>=23" in requires
     assert "tomli>=2; python_version < '3.11'" in requires
 
@@ -456,7 +456,7 @@ TTS_ENTRIES = """
 [[module]]
 name = "tts"
 package = "huri-module-tts"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-tts" }
 extra = "piper"
@@ -464,7 +464,7 @@ extra = "piper"
 [[module]]
 name = "servo"
 package = "huri-module-servo"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 extra = "gpio"
 [module.source]
@@ -570,7 +570,7 @@ LIB_PYPROJECT = """
 [project]
 name = "huri-module-foo"
 dependencies = [
-  "huri-core[server]>=0.4.0.dev0,<0.5",
+  "huri-core[server]>=0.4,<0.5",
   "huri-events>=0.1,<0.2",
   "huri-foo-lib>=0.1,<0.2",
   "numpy>=1.26",
@@ -579,13 +579,13 @@ dependencies = [
 LIB_LIB_PYPROJECT = """
 [project]
 name = "huri-foo-lib"
-dependencies = ["huri-core>=0.4.0.dev0,<0.5", "huri-events>=0.1,<0.2"]
+dependencies = ["huri-core>=0.4,<0.5", "huri-events>=0.1,<0.2"]
 """
 FOO_ENTRY = """
 [[module]]
 name = "foo"
 package = "huri-module-foo"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-foo" }
 """

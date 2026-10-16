@@ -9,7 +9,7 @@ description = "HuRI module: Co-speech gestures (EMAGE): speech audio in, SMPL-X 
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "huri-core[server]>=0.4.0.dev0,<0.5",
+  "huri-core[server]>=0.4,<0.5",
   "huri-events>=0.1,<0.2",
   "numpy>=1.26,<2",
   "torch",
