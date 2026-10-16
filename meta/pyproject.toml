@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=64,<82"]
+build-backend = "setuptools.build_meta"
+
+# huri-modules on PyPI: no code, one extra per curated module of registry.toml,
+# each pinning the exact package version this huri-modules release was tested
+# with. `pip install "huri-modules[vad,stt,tts]"` installs those modules and
+# nothing else, so the server sees only what was picked.
+# tests/test_metapackage.py keeps it in step with registry.toml and packages/.
+[project]
+name = "huri-modules"
+version = "0.1.1"  # = the huri-modules release (RELEASING.md)
+description = "HuRI's curated modules: pick them with extras, e.g. huri-modules[vad,stt,tts]"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+# One extra per registry.toml module (name with "_" as "-"):
+# "<package>[<registry extra>]==<package version>".
+vad = ["huri-module-vad==0.1.0"]
+stt = ["huri-module-stt==0.1.0"]
+tag = ["huri-module-tag==0.1.0"]
+emo = ["huri-module-emo[model]==0.1.0"]
+eag = ["huri-module-emo==0.1.0"]
+rag = ["huri-module-rag[rag]==0.1.0"]
+qag = ["huri-module-rag==0.1.0"]
+tts = ["huri-module-tts[piper]==0.1.0"]
+# The module only: CosyVoice itself is not pip-installable (install.sh adds it).
+tts-cosyvoice = ["huri-module-tts[cosyvoice]==0.1.0"]
+mov = ["huri-module-mov==0.1.0"]
+# Not modules: the event vocabulary alone, and `huri hub`.
+events = ["huri-events==0.1.0"]
+hub = ["huri-hub==0.2.0"]
+# Every module a pip install completes (all but tts-cosyvoice), and huri hub.
+all = ["huri-modules[vad,stt,tag,emo,eag,rag,qag,tts,mov,hub]"]
+
+[project.urls]
+Homepage = "https://github.com/Lucy-Robotics/huri-modules"
+Repository = "https://github.com/Lucy-Robotics/huri-modules"
+Changelog = "https://github.com/Lucy-Robotics/huri-modules/releases"
+"HuRI ecosystem" = "https://github.com/Lucy-Robotics/huri-core#huri-ecosystem"
+
+[tool.setuptools]
+packages = []

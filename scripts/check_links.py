@@ -28,6 +28,7 @@ DEFAULT = [
     "RELEASING.md",
     "ACCEPTANCE.md",
     "modules/README.md",
+    "meta/README.md",
     "packages",
 ]
 
