@@ -28,7 +28,7 @@
 # The curated events and modules (packages/*, with huri-hub: `huri hub`) are
 # installed editable from this checkout. huri-cli, the reference client (a use
 # case of HuRI, not part of it), comes the same way as huri-core: from
-# https://github.com/Lucy-Robotics/huri-cli at HURI_CLI_REF, or editable from
+# https://github.com/Lucy-Robotics/HuRI-CLI at HURI_CLI_REF, or editable from
 # HURI_CLI_PATH; --no-cli leaves it out.
 #
 # No git network call here ever prompts for credentials (a missing or private
@@ -82,7 +82,7 @@ else HURI_CORE_REF_FROM="versions.env"; fi
 HURI_CORE_REF="${HURI_CORE_REF:-$(versions_get HURI_CORE_REF)}"
 HURI_CORE_PATH="${HURI_CORE_PATH:-}"
 # huri-cli: the reference client, installed unless --no-cli.
-HURI_CLI_GIT="https://github.com/Lucy-Robotics/huri-cli.git"
+HURI_CLI_GIT="https://github.com/Lucy-Robotics/HuRI-CLI.git"
 if [[ -n "${HURI_CLI_REF:-}" ]]; then HURI_CLI_REF_FROM="the environment"
 else HURI_CLI_REF_FROM="versions.env"; fi
 HURI_CLI_REF="${HURI_CLI_REF:-$(versions_get HURI_CLI_REF)}"
