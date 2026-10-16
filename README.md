@@ -162,11 +162,12 @@ package whose modules need different stacks gives each module an extra
 `huri-module-tts[piper]` brings Piper's and `[cosyvoice]` CosyVoice's;
 `huri-module-emo[model]` is `emo`'s classifier (torch, transformers) and
 `huri-module-rag[rag]` is `rag`'s retrieval stack, which their aggregators
-`eag` and `qag` do not need. Without a
-checkout, one installs from this repository at a release tag with
-`#subdirectory=`. Neither huri-core nor huri-events is on PyPI, so a module's
-HuRI dependencies go on the same pip command line, from git, and pip never
-looks them up on an index:
+`eag` and `qag` do not need. Without a checkout, the
+[`huri-modules` metapackage](meta/README.md) picks modules by name from PyPI
+(`pip install "huri-modules[emo,eag]"`, see
+[Installing as packages](#installing-as-packages-without-a-checkout)); from git,
+one installs from this repository at a release tag with `#subdirectory=`, with
+the module's HuRI dependencies on the same pip command line:
 
 ```sh
 ref=0.1.0   # a huri-modules release tag
@@ -457,9 +458,28 @@ Note that `requirements.txt` also contains the lint/test toolchain.
 
 ### Installing as packages, without a checkout
 
-`huri-core` is pip-installable from its repository, with its heavy parts behind
-extras so a client never installs Ray or FastAPI; the curated packages install
-from this repository with `#subdirectory=`:
+Every package is on PyPI. `huri-modules` is a metapackage with no code: one
+extra per module of the [registry](registry.toml) (`tts_cosyvoice` is
+`tts-cosyvoice`), each pinning the package version tested in that huri-modules
+release, and `all` for every module but `tts-cosyvoice`, plus `huri hub`. Only
+the modules picked are installed, so the server sees nothing else
+([meta/README.md](meta/README.md) lists the extras):
+
+```sh
+# a server with three modules (each module brings huri-core[server] and huri-events)
+pip install "huri-modules[vad,stt,tts]==0.1.1"
+# a client: the SDK, the curated topics and the reference CLI (no Ray)
+pip install "huri-core[client]>=0.4,<0.5" "huri-events>=0.1,<0.2" huri-cli
+```
+
+pip installs the default PyTorch build: for a GPU (CUDA, ROCm), for CosyVoice,
+which pip cannot install, and for the models and services (Qdrant, Ollama),
+use `./install.sh`. Enabling the modules stays the server's
+`HURI_MODULES` setting.
+
+From git instead, at release tags: `huri-core` with its heavy parts behind
+extras so a client never installs Ray or FastAPI, and the curated packages from
+this repository with `#subdirectory=`:
 
 ```sh
 ref=0.1.0   # a huri-modules release tag
@@ -476,9 +496,9 @@ pip install "huri-core[server] @ $CORE" \
   "huri-events @ $MODS#subdirectory=packages/huri-events"
 ```
 
-huri-core, huri-events and huri-cli are not on PyPI: always give them
-as git URLs on the same command line as what depends on them, so pip never
-looks them up on an index. Use release tags, a huri-core `0.4.x` with a
+From git, give huri-core, huri-events and huri-cli as git URLs on the same
+command line as what depends on them, so pip takes them from git and not from
+an index. Use release tags, a huri-core `0.4.x` with a
 huri-modules `0.1.x` (see [Versions](#versions-and-compatibility)); without a
 ref pip takes the repository's default branch. `[server]` is Ray Serve + FastAPI and the pins that
 keep them working; each module package declares its own dependencies, and the
@@ -535,6 +555,8 @@ See [`packages/huri-module-stt/tests/test_stt.py`](packages/huri-module-stt/test
   tag (see [modules/README.md](modules/README.md))
 - **packages/huri-hub** — `huri hub`, which finds and installs modules, and the
   one reader of the registry's schema
+- **meta/** — `huri-modules`, the PyPI metapackage that picks modules with
+  extras (`huri-modules[vad,stt]`), versioned as the release
 - **registry.toml**, **check_registry.py**, **ACCEPTANCE.md** — the verified
   index, its CI check (with huri-hub's reader) and the listing criteria
 - **versions.env** — the huri-core and huri-cli refs this repository is built
