@@ -1,6 +1,6 @@
 # huri-modules
 
-The one repository to clone to try or deploy [HuRI](https://github.com/Lucy-Robotics/HuRI-landing),
+The one repository to clone to try or deploy [HuRI](https://github.com/Lucy-Robotics/huri-core#huri-ecosystem),
 the open-source conversational pipeline for humanoid robots and virtual avatars:
 speech to text, retrieval-augmented answers from an LLM, emotion, speech
 synthesis and co-speech gestures, served to many clients (robots) at once by a
@@ -24,7 +24,7 @@ The framework itself, [`huri-core`](https://github.com/Lucy-Robotics/huri-core),
 lives in its own repository and is installed from git at the `HURI_CORE_REF` in
 [`versions.env`](versions.env) (see [Versions](#versions-and-compatibility)).
 The reference command-line client,
-[`huri-cli`](https://github.com/Lucy-Robotics/huri-cli), is a use case of HuRI
+[HuRI-CLI](https://github.com/Lucy-Robotics/HuRI-CLI), is a use case of HuRI
 with its own repository and releases; the installer adds it, at the
 `HURI_CLI_REF` in the same file.
 To write a module of your own, start from
@@ -48,7 +48,7 @@ huri-cli --config config/client_local.generated.yaml
 
 You get a `>>` prompt; typing or speaking both work. `\exit` quits the client
 and leaves the server running. `huri-cli` is the reference client
-([its repository](https://github.com/Lucy-Robotics/huri-cli)); a server-only
+([its repository](https://github.com/Lucy-Robotics/HuRI-CLI)); a server-only
 host, or one that brings its own client, skips it with `./install.sh --no-cli`.
 
 **Use the installer, not a bare `pip install`.** It picks the right torch build
@@ -287,10 +287,15 @@ huri-cli --config config/client_local.generated.yaml
 `start.sh` waits for the application to report `RUNNING` and exits non-zero with
 the replica errors if it does not, so a failed deploy is never reported as
 success. `status.sh` reads the _application_ status, not the HTTP proxy's health
-route (which is green even when every deployment is dead).
+route (which is green even when every deployment is dead). `stop.sh` runs
+`serve shutdown` and `ray stop` only when `start.sh` started the Ray head (it
+records that session in `.huri-local/ray.owned`). On a Ray cluster it did not
+start, `stop.sh` removes only the `huri-app` application and leaves Ray and
+every other Serve application running.
 
 `source .huri-local/env.sh` gives a shell configured exactly like a Serve
-replica (model paths, `HURI_MODULES`, STT device, API key), so
+replica (model paths, `HURI_MODULES`, STT device, GPU selection and
+`HSA_OVERRIDE_GFX_VERSION` on AMD, API key), so
 `python -m huri_core.launch_huri` and `python -m huri_rag.ingestion` work
 without `serve deploy`.
 
@@ -365,7 +370,11 @@ The provider selects the wire protocol (`ollama` → `/api/chat`, `vllm`/`api` �
 `/v1/chat/completions`, only `api` sends the bearer token) and is inferred from
 the URL and whether a key was given. Re-point an existing install without
 reinstalling anything: `./install.sh --only config --llm-url ... --llm-model ...`
-then restart (`.huri-local/stop.sh && .huri-local/start.sh`).
+then restart (`.huri-local/stop.sh && .huri-local/start.sh`). `--llm-url` and
+`--llm-model` changes reach the replicas through `serve deploy` either way. An
+API key or GPU variable change only reaches them through a fresh Ray head: if
+`stop.sh` left Ray running because `start.sh` did not start it, run `ray stop`
+yourself (when nothing else uses that cluster) before `start.sh`.
 
 ## Troubleshooting
 
@@ -405,12 +414,12 @@ a Serve `user_config`):
 python -m huri_core.launch_huri
 ```
 
-Client — the reference CLI, [huri-cli](https://github.com/Lucy-Robotics/huri-cli),
+Client — the reference CLI, [HuRI-CLI](https://github.com/Lucy-Robotics/HuRI-CLI),
 has its own repository:
 
 ```sh
 pip install -c constraints.txt \
-  "huri-cli @ git+https://github.com/Lucy-Robotics/huri-cli.git@$(. ./versions.env && echo "$HURI_CLI_REF")"
+  "huri-cli @ git+https://github.com/Lucy-Robotics/HuRI-CLI.git@$(. ./versions.env && echo "$HURI_CLI_REF")"
 huri-cli --config config/client_local.generated.yaml
 ```
 
@@ -461,7 +470,7 @@ cli=0.1.0   # a huri-cli release tag (HURI_CLI_REF in that release's versions.en
 # a client: the SDK, the curated topics and the reference CLI (no Ray)
 pip install "huri-core[client] @ $CORE" \
   "huri-events @ $MODS#subdirectory=packages/huri-events" \
-  "huri-cli @ git+https://github.com/Lucy-Robotics/huri-cli.git@$cli"
+  "huri-cli @ git+https://github.com/Lucy-Robotics/HuRI-CLI.git@$cli"
 # a server: Ray Serve + FastAPI, then the modules (see each package's README)
 pip install "huri-core[server] @ $CORE" \
   "huri-events @ $MODS#subdirectory=packages/huri-events"
@@ -748,17 +757,19 @@ async with client:
 Handlers of one topic run in arrival order; different topics run concurrently.
 A client YAML ([`config/client_template.yaml`](config/client_template.yaml))
 holds the same three things — `modules`, `send` and `subscribe` — and the
-reference CLI ([huri-cli](https://github.com/Lucy-Robotics/huri-cli),
+reference CLI ([HuRI-CLI](https://github.com/Lucy-Robotics/HuRI-CLI),
 `huri-cli --config ...`) adds its device settings under `cli:`, as in the
 installer's `config/client_local.generated.yaml`; its example configs live in
 its repository.
 
 ## More
 
-- [HuRI](https://github.com/Lucy-Robotics/HuRI-landing) — where to start, the
-  architecture and how to contribute
+- [HuRI ecosystem](https://github.com/Lucy-Robotics/huri-core#huri-ecosystem) —
+  where to start, the repositories and what is built with HuRI
 - [huri-core](https://github.com/Lucy-Robotics/huri-core) — the framework, its
-  public surface and its releases
+  public surface and its releases; the
+  [architecture](https://github.com/Lucy-Robotics/huri-core/blob/main/docs/ARCHITECTURE.md)
+  and [how to contribute](https://github.com/Lucy-Robotics/huri-core/blob/main/CONTRIBUTING.md)
 - [huri-plugin-template](https://github.com/Lucy-Robotics/huri-plugin-template) —
   the starting point for a new module
 - HuRI's complete developer documentation is available

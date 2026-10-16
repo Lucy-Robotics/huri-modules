@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 # with its extra, so a host that runs one engine never installs the other's
 # stack (piper's onnxruntime and CosyVoice's onnxruntime-gpu do not mix).
 dependencies = [
-  "huri-core[server]>=0.4.0.dev0,<0.5",
+  "huri-core[server]>=0.4,<0.5",
   "huri-events>=0.1,<0.2",
   "numpy>=1.26,<2",
 ]

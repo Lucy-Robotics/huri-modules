@@ -17,7 +17,7 @@ key of the registry is a change here, released with huri-hub.
     name = "stt"
     package = "huri-module-stt"
     summary = "Speech to text"
-    huri_core = ">=0.4.0.dev0,<0.5"
+    huri_core = ">=0.4,<0.5"
     verified = 2026-10-12
     source = { path = "packages/huri-module-stt" }    # curated, in huri-modules
     # or a verified third-party module, pinned as a submodule of huri-modules:

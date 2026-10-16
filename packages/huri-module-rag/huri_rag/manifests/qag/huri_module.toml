@@ -4,4 +4,4 @@ input = { topic = "huri.partial_question", event = "huri_events.question:Partial
 output = { topic = "huri.question", event = "huri_events.question:RAGQuestion" }
 events = ["huri-events>=0.1,<0.2"]
 requires = { gpu = false, actuation = false }
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"

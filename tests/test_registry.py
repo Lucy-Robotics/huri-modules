@@ -93,7 +93,7 @@ def test_the_schema_is_huri_hubs(check):
         "or use a huri-modules release built for it (HURI_MODULES_REF)"
     )
     text = REGISTRY.read_text().replace(
-        'huri_core = ">=0.4.0.dev0,<0.5"', 'huri_core = "bogus"', 1
+        'huri_core = ">=0.4,<0.5"', 'huri_core = "bogus"', 1
     )
     # Reported once, as malformed: the entry is there, not missing.
     problems = check(text)
@@ -166,7 +166,7 @@ SERVO = (
     'name = "servo"\n'
     'package = "huri-module-servo"\n'
     'summary = "Gesture to servo angle arrays"\n'
-    'huri_core = ">=0.4.0.dev0,<0.5"\n'
+    'huri_core = ">=0.4,<0.5"\n'
     "verified = 2026-10-12\n"
     'source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0", '
     'submodule = "modules/servo" }\n'

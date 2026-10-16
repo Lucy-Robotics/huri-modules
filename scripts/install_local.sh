@@ -28,7 +28,7 @@
 # The curated events and modules (packages/*, with huri-hub: `huri hub`) are
 # installed editable from this checkout. huri-cli, the reference client (a use
 # case of HuRI, not part of it), comes the same way as huri-core: from
-# https://github.com/Lucy-Robotics/huri-cli at HURI_CLI_REF, or editable from
+# https://github.com/Lucy-Robotics/HuRI-CLI at HURI_CLI_REF, or editable from
 # HURI_CLI_PATH; --no-cli leaves it out.
 #
 # No git network call here ever prompts for credentials (a missing or private
@@ -82,7 +82,7 @@ else HURI_CORE_REF_FROM="versions.env"; fi
 HURI_CORE_REF="${HURI_CORE_REF:-$(versions_get HURI_CORE_REF)}"
 HURI_CORE_PATH="${HURI_CORE_PATH:-}"
 # huri-cli: the reference client, installed unless --no-cli.
-HURI_CLI_GIT="https://github.com/Lucy-Robotics/huri-cli.git"
+HURI_CLI_GIT="https://github.com/Lucy-Robotics/HuRI-CLI.git"
 if [[ -n "${HURI_CLI_REF:-}" ]]; then HURI_CLI_REF_FROM="the environment"
 else HURI_CLI_REF_FROM="versions.env"; fi
 HURI_CLI_REF="${HURI_CLI_REF:-$(versions_get HURI_CLI_REF)}"
@@ -1557,7 +1557,7 @@ install_python_deps() {
     err "the planned modules cannot be installed together on this $variant host:"
     local line
     while IFS= read -r line; do note "$line"; done <<<"$merged"
-    die "fix the pins in packages/*/requirements-$variant[.<module>].txt, or leave a module out with --modules"
+    die "fix the pins in packages/*/requirements-${variant}[.<module>].txt, or leave a module out with --modules"
   fi
   (( DRY_RUN )) || printf '%s\n' "$merged" | write_file "$modules_req"
 
@@ -2189,8 +2189,9 @@ EOF
         # This host has $GPU_COUNT AMD devices. An APU's iGPU has a different gfx
         # target from the dGPU and the CTranslate2 ROCm build carries no kernels
         # for it, so a replica landing there fails with "no kernel image is
-        # available for execution on the device". start.sh pins Ray to GPU index
-        # $GPU_INDEX via HIP_VISIBLE_DEVICES; override with --gpu-index.
+        # available for execution on the device". env.sh (sourced by start.sh)
+        # pins Ray to GPU index $GPU_INDEX via HIP_VISIBLE_DEVICES; override
+        # with --gpu-index.
 EOF
     fi
     if [[ -n "$GFX_OVERRIDE" ]]; then
@@ -2428,13 +2429,28 @@ generate_run_scripts() {
     qdrant_owned=1
   fi
 
+  # The GPU environment lives in env.sh, which start.sh sources before
+  # 'ray start': the Ray head, every replica, and any client that sources
+  # env.sh to run 'serve run' itself all see the same devices.
   # Built as a plain string rather than a ${VAR:+...} inside the heredoc below:
   # that construct does not survive the surrounding escaped ${...} expansions.
-  local gfx_export=""
+  local gpu_export=""
+  if [[ "$GPU_VENDOR" == "amd" ]] && (( GPU_COUNT > 1 )); then
+    gpu_export="# This host exposes $GPU_COUNT AMD devices, so Ray is given only index
+# $GPU_INDEX ($GPU_NAME). An APU's iGPU has a different gfx target and the
+# CTranslate2 ROCm wheel carries no kernels for it, so an STT replica scheduled
+# there fails with 'no kernel image is available for execution on the device'.
+# HIP_VISIBLE_DEVICES, not ROCR_VISIBLE_DEVICES: Ray 2.55 raises on the latter,
+# and the two compose rather than alias — setting both selects nothing at all.
+# Re-run the installer with --gpu-index N to pick a different device.
+export HIP_VISIBLE_DEVICES=$GPU_INDEX
+"
+  fi
   if [[ -n "$GFX_OVERRIDE" ]]; then
-    gfx_export="# This GPU's gfx target is missing from the installed torch build; report a
+    gpu_export+="# This GPU's gfx target is missing from the installed torch build; report a
 # supported same-family arch or every kernel launch aborts inside HIP.
-export HSA_OVERRIDE_GFX_VERSION=$GFX_OVERRIDE"
+export HSA_OVERRIDE_GFX_VERSION=$GFX_OVERRIDE
+"
   fi
 
   write_file "$STATE_DIR/env.sh" <<EOF
@@ -2459,7 +2475,7 @@ if [ -r "$STATE_DIR/secrets.env" ]; then
   # shellcheck disable=SC1091
   . "$STATE_DIR/secrets.env"
 fi
-$gfx_export
+$gpu_export
 EOF
 
   {
@@ -2472,7 +2488,8 @@ source "$STATE_DIR/env.sh"
 
 # Secrets are exported *before* ray start so every Serve replica inherits them
 # (rag.py reads HURI_LLM_API_KEY). A cluster already running keeps its old env —
-# run stop.sh first after changing the key.
+# run stop.sh first after changing the key or the GPU variables (and \`ray stop\`
+# if stop.sh left Ray running).
 # shellcheck disable=SC1091
 [ -r "$STATE_DIR/secrets.env" ] && source "$STATE_DIR/secrets.env"
 EOF
@@ -2546,33 +2563,21 @@ EOF
     cat <<EOF
 
 # --- 3. Ray head ------------------------------------------------------------
-# Started from the repo root; replicas import huri_core.app from the venv.
-EOF
-
-    if [[ "$GPU_VENDOR" == "amd" ]] && (( GPU_COUNT > 1 )); then
-      cat <<EOF
-# This host exposes $GPU_COUNT AMD devices, so Ray is given only index
-# $GPU_INDEX ($GPU_NAME). An APU's iGPU has a different gfx target and the
-# CTranslate2 ROCm wheel carries no kernels for it, so an STT replica scheduled
-# there fails with "no kernel image is available for execution on the device".
-# HIP_VISIBLE_DEVICES, not ROCR_VISIBLE_DEVICES: Ray 2.55 raises on the latter,
-# and the two compose rather than alias — setting both selects nothing at all.
-# Re-run the installer with --gpu-index N to pick a different device.
-export HIP_VISIBLE_DEVICES=$GPU_INDEX
-EOF
-    fi
-    if [[ -n "$GFX_OVERRIDE" ]]; then
-      cat <<EOF
-# Exported before 'ray start' so the head and every replica inherit it.
-export HSA_OVERRIDE_GFX_VERSION=$GFX_OVERRIDE
-EOF
-    fi
-
-    cat <<EOF
+# Started from the repo root; replicas import huri_core.app from the venv. The
+# GPU environment (HIP_VISIBLE_DEVICES, HSA_OVERRIDE_GFX_VERSION) came with
+# env.sh above, so the head and every replica inherit it.
+# ray.owned records that this script started the head, and which session, so
+# stop.sh never stops a Ray cluster someone else runs.
 if ! ray status >/dev/null 2>&1; then
   echo "[huri] starting ray head"
   ray start --head --num-cpus=$CPU_CORES --num-gpus=$P_RAY_GPUS \\
     --dashboard-host=127.0.0.1 --disable-usage-stats
+  # An empty record (the session link was unreadable) makes stop.sh leave Ray
+  # running: it cannot tell this head from one someone else starts later.
+  readlink -f "\${RAY_TMPDIR:-/tmp}/ray/session_latest" >"$STATE_DIR/ray.owned" 2>/dev/null \\
+    || : >"$STATE_DIR/ray.owned"
+else
+  echo "[huri] a ray head is already running; reusing it and the environment it started with"
 fi
 
 # --- 4. HuRI ----------------------------------------------------------------
@@ -2619,8 +2624,37 @@ EOF
 set -Euo pipefail
 cd "$REPO_ROOT"
 source "$STATE_DIR/env.sh"
-serve shutdown -y >/dev/null 2>&1 || true
-ray stop >/dev/null 2>&1 || true
+
+# On a Ray cluster start.sh did not start, remove only HuRI's application:
+# \`serve shutdown\` would delete every application on it, someone else's too.
+# Ray 2.55's serve CLI has no delete command, hence the Python API.
+leave_ray_running() {
+  echo "[huri] \$1; removing only huri-app and leaving ray running"
+  python -c 'import ray; from ray import serve; ray.init(address="auto", logging_level="ERROR"); serve.delete("huri-app")' \\
+    >/dev/null 2>&1 || true
+  echo '[huri] env changes (API key, GPU vars) only reach replicas after a fresh Ray head;'
+  echo '[huri] run \`ray stop\` yourself if nothing else uses this cluster.'
+}
+
+# Stop Serve and Ray only if start.sh started this very session (see ray.owned
+# there). An empty record cannot tell that session from a later one: keep Ray.
+owned="$STATE_DIR/ray.owned"
+if [ -e "\$owned" ]; then
+  started="\$(cat "\$owned" 2>/dev/null || true)"
+  current="\$(readlink -f "\${RAY_TMPDIR:-/tmp}/ray/session_latest" 2>/dev/null || true)"
+  if [ -z "\$started" ]; then
+    leave_ray_running "start.sh could not record which ray session it started"
+  elif [ "\$started" = "\$current" ]; then
+    echo "[huri] stopping the ray head start.sh started"
+    serve shutdown -y >/dev/null 2>&1 || true
+    ray stop >/dev/null 2>&1 || true
+  else
+    leave_ray_running "ray is not the session start.sh started"
+  fi
+  rm -f "\$owned"
+else
+  leave_ray_running "start.sh did not start ray"
+fi
 if [ "\${1:-}" = "--all" ]; then
   # Only stop what start.sh itself started. The previous version ran
   # \`pkill -f "ollama serve"\`, which kills any Ollama on the machine —
