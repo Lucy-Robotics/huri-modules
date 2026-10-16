@@ -18,6 +18,15 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "scripts" / "install_local.sh"
 
+
+def shipped_ref(key):
+    """The ref the shipped versions.env names: `dev`, or a tag in a release."""
+    for line in (ROOT / "versions.env").read_text().splitlines():
+        if line.startswith(f"{key}="):
+            return line.split("=", 1)[1].strip()
+    raise KeyError(key)
+
+
 pytestmark = pytest.mark.skipif(
     shutil.which("bash") is None, reason="the installer is a bash script"
 )
@@ -259,17 +268,18 @@ def test_plan_only_makes_no_network_call(tmp_path, flags):
     )
     assert out.returncode == 0, out.stdout + out.stderr
     assert not log.exists(), log.read_text()
-    assert "git ref dev of https://github.com/Lucy-Robotics/huri-core" in out.stdout
+    core, cli = shipped_ref("HURI_CORE_REF"), shipped_ref("HURI_CLI_REF")
+    assert f"git ref {core} of https://github.com/Lucy-Robotics/huri-core" in out.stdout
     if flags:
         assert re.search(r"client\s+none \(--no-cli\)", out.stdout)
     else:
         assert re.search(
-            r"client\s+huri-cli \(git ref dev of "
+            rf"client\s+huri-cli \(git ref {re.escape(cli)} of "
             r"https://github.com/Lucy-Robotics/HuRI-CLI\)",
             out.stdout,
         )
     plan = (repo / ".huri-local" / "plan.env").read_text()
-    assert ("HURI_CLI=none" if flags else "HURI_CLI=dev") in plan
+    assert ("HURI_CLI=none" if flags else f"HURI_CLI={cli}") in plan
 
 
 def test_a_missing_cli_ref_is_refused_up_front(tmp_path):
@@ -395,7 +405,8 @@ def test_an_unreachable_ref_fails_before_anything_is_installed(tmp_path):
         timeout=300,
     )
     assert out.returncode != 0
-    assert "cannot reach huri-core at ref dev" in out.stdout + out.stderr
+    core = shipped_ref("HURI_CORE_REF")
+    assert f"cannot reach huri-core at ref {core}" in out.stdout + out.stderr
     assert "ls-remote" in log.read_text()
     assert not changes.exists(), changes.read_text()
     assert not (repo / ".venv").exists()
