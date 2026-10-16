@@ -32,7 +32,7 @@ def test_the_old_repository_name_is_reported(tmp_path):
     page = tmp_path / "page.md"
     page.write_text(
         "[front](https://github.com/Lucy-Robotics/huri-core#huri-ecosystem) "
-        "[robot](https://github.com/Lucy-Robotics/HuRI-inmoov) "
+        "[robot](https://github.com/Lucy-Robotics/HuRI-InMoov) "
         "[site](https://github.com/Lucy-Robotics/HuRI_ATP_testsite)\n"
     )
     assert links.check_file(page) == []

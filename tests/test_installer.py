@@ -171,7 +171,7 @@ def test_missing_ref_names_the_ref_to_fix(tmp_path):
             str(lib),
             "resolve_ref",
             "huri-cli",
-            "https://github.com/Lucy-Robotics/HuRI-Cli.git",
+            "https://github.com/Lucy-Robotics/HuRI-CLI.git",
             "nope",
             "HURI_CLI_PATH",
         ],
@@ -265,7 +265,7 @@ def test_plan_only_makes_no_network_call(tmp_path, flags):
     else:
         assert re.search(
             r"client\s+huri-cli \(git ref dev of "
-            r"https://github.com/Lucy-Robotics/HuRI-Cli\)",
+            r"https://github.com/Lucy-Robotics/HuRI-CLI\)",
             out.stdout,
         )
     plan = (repo / ".huri-local" / "plan.env").read_text()
@@ -308,7 +308,7 @@ def test_the_environment_overrides_versions_env(tmp_path):
     )
     assert out.returncode == 0, out.stdout + out.stderr
     assert "git ref 0.4.0 of https://github.com/Lucy-Robotics/huri-core" in out.stdout
-    assert "git ref 0.1.0 of https://github.com/Lucy-Robotics/HuRI-Cli" in out.stdout
+    assert "git ref 0.1.0 of https://github.com/Lucy-Robotics/HuRI-CLI" in out.stdout
     assert not log.exists()
 
 

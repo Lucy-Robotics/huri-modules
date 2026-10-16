@@ -24,7 +24,7 @@ The framework itself, [`huri-core`](https://github.com/Lucy-Robotics/huri-core),
 lives in its own repository and is installed from git at the `HURI_CORE_REF` in
 [`versions.env`](versions.env) (see [Versions](#versions-and-compatibility)).
 The reference command-line client,
-[HuRI-Cli](https://github.com/Lucy-Robotics/HuRI-Cli), is a use case of HuRI
+[HuRI-CLI](https://github.com/Lucy-Robotics/HuRI-CLI), is a use case of HuRI
 with its own repository and releases; the installer adds it, at the
 `HURI_CLI_REF` in the same file.
 To write a module of your own, start from
@@ -48,7 +48,7 @@ huri-cli --config config/client_local.generated.yaml
 
 You get a `>>` prompt; typing or speaking both work. `\exit` quits the client
 and leaves the server running. `huri-cli` is the reference client
-([its repository](https://github.com/Lucy-Robotics/HuRI-Cli)); a server-only
+([its repository](https://github.com/Lucy-Robotics/HuRI-CLI)); a server-only
 host, or one that brings its own client, skips it with `./install.sh --no-cli`.
 
 **Use the installer, not a bare `pip install`.** It picks the right torch build
@@ -414,12 +414,12 @@ a Serve `user_config`):
 python -m huri_core.launch_huri
 ```
 
-Client — the reference CLI, [HuRI-Cli](https://github.com/Lucy-Robotics/HuRI-Cli),
+Client — the reference CLI, [HuRI-CLI](https://github.com/Lucy-Robotics/HuRI-CLI),
 has its own repository:
 
 ```sh
 pip install -c constraints.txt \
-  "huri-cli @ git+https://github.com/Lucy-Robotics/HuRI-Cli.git@$(. ./versions.env && echo "$HURI_CLI_REF")"
+  "huri-cli @ git+https://github.com/Lucy-Robotics/HuRI-CLI.git@$(. ./versions.env && echo "$HURI_CLI_REF")"
 huri-cli --config config/client_local.generated.yaml
 ```
 
@@ -470,7 +470,7 @@ cli=0.1.0   # a huri-cli release tag (HURI_CLI_REF in that release's versions.en
 # a client: the SDK, the curated topics and the reference CLI (no Ray)
 pip install "huri-core[client] @ $CORE" \
   "huri-events @ $MODS#subdirectory=packages/huri-events" \
-  "huri-cli @ git+https://github.com/Lucy-Robotics/HuRI-Cli.git@$cli"
+  "huri-cli @ git+https://github.com/Lucy-Robotics/HuRI-CLI.git@$cli"
 # a server: Ray Serve + FastAPI, then the modules (see each package's README)
 pip install "huri-core[server] @ $CORE" \
   "huri-events @ $MODS#subdirectory=packages/huri-events"
@@ -757,7 +757,7 @@ async with client:
 Handlers of one topic run in arrival order; different topics run concurrently.
 A client YAML ([`config/client_template.yaml`](config/client_template.yaml))
 holds the same three things — `modules`, `send` and `subscribe` — and the
-reference CLI ([HuRI-Cli](https://github.com/Lucy-Robotics/HuRI-Cli),
+reference CLI ([HuRI-CLI](https://github.com/Lucy-Robotics/HuRI-CLI),
 `huri-cli --config ...`) adds its device settings under `cli:`, as in the
 installer's `config/client_local.generated.yaml`; its example configs live in
 its repository.
