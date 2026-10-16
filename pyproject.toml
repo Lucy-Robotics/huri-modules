@@ -1,6 +1,7 @@
 # Tool settings only. The repository root is not a distribution: what is
-# installable lives in packages/* (one distribution each); huri-core and
-# huri-cli come from their own repositories at the refs in versions.env.
+# installable lives in packages/* (one distribution each) and meta/ (the
+# huri-modules metapackage); huri-core and huri-cli come from their own
+# repositories at the refs in versions.env.
 
 [tool.black]
 line-length = 88

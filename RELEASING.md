@@ -50,6 +50,17 @@ The range and `HURI_CORE_REF` always move together: a range that does not
 contain the core `HURI_CORE_REF` installs fails the tests, the image builds
 (`deploy/install_huri.sh` checks the manifests) and the server's startup.
 
+### The `huri-modules` metapackage
+
+[`meta/`](meta) builds `huri-modules`, the name on PyPI for the whole set: no
+code, one extra per `registry.toml` module (`pip install "huri-modules[vad,stt]"`),
+each pinning `<package>[<registry extra>]==<its version>`, plus `events`, `hub`
+and `all`. Its `version` **is** the huri-modules release (`0.1.1` is release
+`0.1.1`), so `huri-modules==X.Y.Z` installs exactly the set tagged `X.Y.Z`.
+It lives outside `packages/`, which holds the module and event packages only.
+`tests/test_metapackage.py` fails when a module, a package version or a
+registry `extra` changes without it.
+
 ### versions.env
 
 Shell-sourceable `KEY=value` lines (comments allowed), one per repository this
@@ -122,6 +133,8 @@ after the huri-core release they target is tagged:
      `check_registry.py` checks it): `>=X.Y.0.dev0,<X.(Y+1)` becomes
      `>=X.Y,<X.(Y+1)`;
    - bumps the version of every package that changed since the last release;
+   - sets `meta/pyproject.toml`'s `version` to `X.Y.Z` and its pins to the
+     package versions (`tests/test_metapackage.py` checks the pins);
    - updates the compatibility table (here and in README.md).
 2. CI must be green on that PR: lint, `check_registry.py`, every package's
    tests and the full pipeline test (`tests/integration`), against the pinned
@@ -130,7 +143,13 @@ after the huri-core release they target is tagged:
    when the GPU paths changed, `gpu.yml` and the GPU images (`docker.yml` with
    `gpu_images`).
 3. Merge it, then merge `dev` into `main` with a PR named `Release X.Y.Z`.
-4. Tag `main`'s merge commit `X.Y.Z` and push the tag.
+4. Tag `main`'s merge commit `X.Y.Z`, push the tag and publish a GitHub
+   release. Then publish to PyPI, from the tag: each package whose version is
+   not on PyPI yet, then the metapackage
+   (`python -m build -o dist packages/<pkg>` for each, `python -m build -o dist meta`,
+   `twine check dist/* && twine upload dist/*`). PyPI never accepts a version
+   twice: a package whose version did not change is skipped
+   (`twine upload --skip-existing`).
 5. On `dev`, leave `HURI_CORE_REF` at the released core tag (and
    `HURI_CLI_REF` at its tag, or set it back to huri-cli's `dev`). Do **not** set
    it back to `dev` on its own: core `dev` is bumped to the next minor's

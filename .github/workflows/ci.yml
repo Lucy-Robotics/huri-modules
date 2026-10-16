@@ -74,7 +74,7 @@ jobs:
       - run: pip install pyyaml
       - name: the pages' relative links and anchors resolve
         # Stdlib only, no network: README.md, RELEASING.md, ACCEPTANCE.md,
-        # modules/README.md and every page under packages/.
+        # modules/README.md, meta/README.md and every page under packages/.
         run: python scripts/check_links.py
       - name: every config/*.yaml is valid YAML
         run: |
@@ -308,6 +308,11 @@ jobs:
             pip install -c constraints.txt -e "$dir"
           done
       - run: pytest -q
+      - name: the huri-modules metapackage (meta/) builds and its metadata is valid
+        run: |
+          pip install -c constraints.txt build twine
+          python -m build -o "$RUNNER_TEMP/meta-dist" meta
+          twine check --strict "$RUNNER_TEMP"/meta-dist/*
       - name: the registry matches its packages, and their own tests pass
         # --strict: every third-party submodule must be checked out, at the
         # commit its tag names in its repository (read with git ls-remote, as
