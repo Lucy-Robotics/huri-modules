@@ -75,7 +75,7 @@ core minor is under way (see step 5 below). Everything reads it:
   step 5 widens the ranges; in that window, read its log for failures other
   than the range checks.
 
-`HURI_CLI_REF`, a git ref of [huri-cli](https://github.com/Lucy-Robotics/huri-cli),
+`HURI_CLI_REF`, a git ref of [HuRI-CLI](https://github.com/Lucy-Robotics/HuRI-CLI),
 the reference client: a use case of HuRI with its own repository, versions
 (tags `X.Y.Z`, first `0.1.0`) and CI, depending on `huri-core[client]` and
 `huri-events` by version range. A huri-cli release tag on `main`; on `dev`, a

@@ -35,7 +35,7 @@ _LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)\)")
 _FENCE = re.compile(r"(?ms)^[ \t]*(```|~~~).*?^[ \t]*\1")
 _INLINE_CODE = re.compile(r"`[^`\n]*`")
 # Retired repositories and what replaced them. The old name must not match
-# another repository whose name starts with HuRI (HuRI-inmoov, HuRI_ATP_testsite).
+# another repository whose name starts with HuRI (HuRI-InMoov, HuRI_ATP_testsite).
 _RETIRED = [
     (
         re.compile(r"github\.com/Lucy-Robotics/HuRI(?![\w-])", re.I),
