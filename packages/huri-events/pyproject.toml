@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 # Light on purpose: a client decodes every curated topic with this and
 # huri-core[client], no torch, no ray.
 dependencies = [
-  "huri-core>=0.4.0.dev0,<0.5",
+  "huri-core>=0.4,<0.5",
   "numpy>=1.26,<2",
 ]
 

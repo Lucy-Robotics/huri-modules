@@ -34,7 +34,7 @@ verified = 2026-10-12
 name = "emo"
 package = "huri-module-emo"
 summary = "Estimates the emotion of speech from its prosody"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-emo" }
 extra = "model"
@@ -43,7 +43,7 @@ extra = "model"
 name = "eag"
 package = "huri-module-emo"
 summary = "Aggregates emotion estimates over an utterance"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-emo" }
 
@@ -51,7 +51,7 @@ source = { path = "packages/huri-module-emo" }
 name = "mov"
 package = "huri-module-mov"
 summary = "Generates SMPL-X gestures matching the speech (EMAGE)"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-mov" }
 
@@ -59,7 +59,7 @@ source = { path = "packages/huri-module-mov" }
 name = "rag"
 package = "huri-module-rag"
 summary = "Answers questions from memory with an LLM, streaming tokens"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-rag" }
 extra = "rag"
@@ -68,7 +68,7 @@ extra = "rag"
 name = "qag"
 package = "huri-module-rag"
 summary = "Joins a transcript and its emotion into a question"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-rag" }
 
@@ -76,7 +76,7 @@ source = { path = "packages/huri-module-rag" }
 name = "stt"
 package = "huri-module-stt"
 summary = "Transcribes speech with faster-whisper (CPU or GPU)"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-stt" }
 
@@ -84,7 +84,7 @@ source = { path = "packages/huri-module-stt" }
 name = "tag"
 package = "huri-module-tag"
 summary = "Stitches overlapping transcript passes into one sentence"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-tag" }
 
@@ -92,7 +92,7 @@ source = { path = "packages/huri-module-tag" }
 name = "tts_cosyvoice"
 package = "huri-module-tts"
 summary = "Speaks the reply in a cloned voice with CosyVoice3"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-tts" }
 extra = "cosyvoice"
@@ -101,7 +101,7 @@ extra = "cosyvoice"
 name = "tts"
 package = "huri-module-tts"
 summary = "Speaks the reply with Piper (ONNX, CPU, ~30x realtime)"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-tts" }
 extra = "piper"
@@ -110,6 +110,6 @@ extra = "piper"
 name = "vad"
 package = "huri-module-vad"
 summary = "Detects speech in microphone frames (WebRTC VAD)"
-huri_core = ">=0.4.0.dev0,<0.5"
+huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-vad" }

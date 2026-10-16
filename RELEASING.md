@@ -43,9 +43,9 @@ package):
   skips it, for a deliberate run against an older core only).
 
 Packages pin huri-core with a range of one minor version: today
-`huri-core>=0.4.0.dev0,<0.5` (in each `pyproject.toml`, `huri_module.toml` and
-`registry.toml` entry), which becomes
-`>=0.4,<0.5` once huri-core `0.4.0` is tagged (step 1 of the checklist below).
+`huri-core>=0.4,<0.5` (in each `pyproject.toml`, `huri_module.toml` and
+`registry.toml` entry). While work targets an untagged core minor, the lower
+bound is its `.dev0` (`>=0.5.0.dev0,<0.6`, step 5 of the checklist below).
 The range and `HURI_CORE_REF` always move together: a range that does not
 contain the core `HURI_CORE_REF` installs fails the tests, the image builds
 (`deploy/install_huri.sh` checks the manifests) and the server's startup.
@@ -59,8 +59,7 @@ and `deploy/install_huri.sh` parse it without running it.
 `HURI_CORE_REF`, a git ref of [huri-core](https://github.com/Lucy-Robotics/huri-core):
 the core this repository is built and tested against. A release tag (`0.4.0`)
 on `main`; on `dev`, the same tag, or huri-core's `dev` while work on the next
-core minor is under way (see step 5 below). Before the first release it is
-`dev`, against core `0.4.0.dev0`. Everything reads it:
+core minor is under way (see step 5 below). Everything reads it:
 
 - `./install.sh` installs `huri-core[server,client]` from git at that ref
   (`HURI_CORE_REF=<ref>` in the environment overrides the file;
@@ -120,8 +119,8 @@ after the huri-core release they target is tagged:
      `huri-core` dependency of each `pyproject.toml` under `packages/`, the
      `huri_core` key of each
      `huri_module.toml` and of each `registry.toml` entry (they must agree,
-     `check_registry.py` checks it); for the first release,
-     `>=0.4.0.dev0,<0.5` becomes `>=0.4,<0.5`;
+     `check_registry.py` checks it): `>=X.Y.0.dev0,<X.(Y+1)` becomes
+     `>=X.Y,<X.(Y+1)`;
    - bumps the version of every package that changed since the last release;
    - updates the compatibility table (here and in README.md).
 2. CI must be green on that PR: lint, `check_registry.py`, every package's
