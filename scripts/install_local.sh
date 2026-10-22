@@ -1797,7 +1797,10 @@ install_ct2_rocm() {
     # `pip install <wheel>` reports "Requirement already satisfied" and silently
     # keeps whichever build is there. That is how STT ended up running the CPU
     # wheel while the log said "CTranslate2 (ROCm wheel)". --no-deps because its
-    # dependencies are already pinned by the files installed above.
+    # dependencies are pinned by the files installed after it — except numpy
+    # and pyyaml, which `import ctranslate2` needs for the probe below, and
+    # which nothing installed before this step (torch) pulls in.
+    run "$PIP" install "${C[@]}" "$(pin_of numpy requirements.txt)" pyyaml
     run "$PIP" install "${C[@]}" --force-reinstall --no-deps "$whl"
     # Fail here, with the loader error in hand, rather than at the first
     # utterance inside a Serve replica.
