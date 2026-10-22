@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 import numpy as np
 import webrtcvad
@@ -19,8 +19,8 @@ class VAD(Module):
     :vad_agressiveness: from 0 (low) to 3 (high, can distord audio).
     :silence_duration: how many seconds will a no voice be considered a silence.
     :sample_rate: size of received chunk of audio. Usually 8000, 16000 or 48000.
-    :block_duration: size of received chunk of audio (in s).
-        Can only be 0.010, 0.020 and 0.030.
+    :block_duration: size of the frames WebRTC analyses (in s), 0.010, 0.020
+        or 0.030. Received chunks of any size are re-cut to it.
     """
 
     # Inbound microphone frames travel on their own topic so the TTS-output
@@ -50,12 +50,26 @@ class VAD(Module):
         self.silence_frames_count: int = -1
 
         self.vad = webrtcvad.Vad(vad_agressiveness)
+        # WebRTC only takes frames of exactly block_size samples; a client may
+        # send any size, so the bytes are re-cut here and a partial frame waits
+        # for the next chunk.
+        self._pending = b""
 
-    async def process(self, data: BytesEvent) -> Optional[Voice]:
-        if self.vad.is_speech(data.data, self.sample_rate) is True:
+    async def process(self, data: BytesEvent) -> AsyncIterator[Voice]:
+        self._pending += data.data
+        frame_bytes = self.block_size * 2  # int16
+        while len(self._pending) >= frame_bytes:
+            frame = self._pending[:frame_bytes]
+            self._pending = self._pending[frame_bytes:]
+            voice = self._frame(frame)
+            if voice is not None:
+                yield voice
+
+    def _frame(self, frame: bytes) -> Optional[Voice]:
+        if self.vad.is_speech(frame, self.sample_rate) is True:
             self.silence_frames_count = 0
 
-            audio_array = np.frombuffer(data.data, dtype=np.int16)
+            audio_array = np.frombuffer(frame, dtype=np.int16)
             audio_array_float = audio_array.astype(np.float32) / 32768.0
 
             return Voice(audio_array_float)

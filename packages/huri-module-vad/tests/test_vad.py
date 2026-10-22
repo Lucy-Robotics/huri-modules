@@ -49,3 +49,40 @@ def test_block_duration_must_be_one_webrtc_accepts():
 def test_real_detector_runs_on_a_frame():
     out = ModuleHarness(VAD).run(BytesEvent(bytes(640)))  # digital silence
     assert out == [] or isinstance(out[0], Voice)
+
+
+class Recording(Scripted):
+    def __init__(self, decisions):
+        super().__init__(decisions)
+        self.frames = []
+
+    def is_speech(self, frame, sample_rate):
+        self.frames.append(len(frame))
+        return super().is_speech(frame, sample_rate)
+
+
+def test_chunks_of_any_size_are_recut_into_frames_webrtc_accepts():
+    """WebRTC raises on any other frame size; a client may send any chunk
+    size, down to an odd number of bytes."""
+    harness = ModuleHarness(VAD, silence_duration=0.05)
+    harness.module.vad = detector = Recording([True] * 4)
+    audio = FRAME * 3 + FRAME[:100]
+
+    out = harness.run(
+        *(BytesEvent(audio[i : i + 333]) for i in range(0, len(audio), 333))
+    )
+
+    assert detector.frames == [640, 640, 640]  # the last 100 bytes wait
+    assert [v.data.size for v in out] == [320, 320, 320]
+    harness.run(BytesEvent(FRAME[100:]))  # completes the 4th frame
+    assert detector.frames == [640] * 4
+
+
+def test_one_chunk_holding_speech_then_silence_ends_the_utterance():
+    out = vad([True] + [False] * 6).run(BytesEvent(FRAME * 7))
+    assert [v.data is None for v in out] == [False, True]
+
+
+def test_real_detector_takes_an_odd_sized_chunk():
+    out = ModuleHarness(VAD).run(BytesEvent(bytes(1001)), BytesEvent(bytes(279)))
+    assert out == [] or all(isinstance(v, Voice) for v in out)
