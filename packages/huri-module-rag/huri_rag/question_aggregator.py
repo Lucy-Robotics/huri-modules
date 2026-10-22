@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import AsyncIterator, Optional
+from typing import AsyncGenerator, Optional
 
 from huri_events.emotion import Emotion
 from huri_events.question import PartialQuestion, RAGQuestion
@@ -81,7 +81,7 @@ class QAG(Module):
 
     async def process(
         self, partial_question: PartialQuestion
-    ) -> AsyncIterator[RAGQuestion]:
+    ) -> AsyncGenerator[RAGQuestion, None]:
         question = self._aggregate(partial_question)
         if question is not None:
             if self._sent is not None:

@@ -1,4 +1,4 @@
-from typing import AsyncIterator, Optional
+from typing import AsyncGenerator, Optional
 
 import numpy as np
 import webrtcvad
@@ -55,7 +55,7 @@ class VAD(Module):
         # for the next chunk.
         self._pending = b""
 
-    async def process(self, data: BytesEvent) -> AsyncIterator[Voice]:
+    async def process(self, data: BytesEvent) -> AsyncGenerator[Voice, None]:
         self._pending += data.data
         frame_bytes = self.block_size * 2  # int16
         while len(self._pending) >= frame_bytes:
