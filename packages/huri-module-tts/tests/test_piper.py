@@ -1,10 +1,13 @@
 """Piper's deployment logic, with the ONNX voice replaced by a fake."""
 
 import asyncio
+import os
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 from huri_events.text import Token
+from huri_tts.piper import handle as piper_handle
 from huri_tts.piper.handle import PiperTTSHandle
 from huri_tts.piper.module import PiperTTS
 
@@ -76,3 +79,46 @@ def test_the_module_drives_the_deployment_end_to_end():
     first, rest = asyncio.run(speak())
     assert rest == [] and first[-1].end
     assert sum(a.data.size for a in first) == len("Hello there, this is HuRI.") * 10
+
+
+def test_the_onnx_session_runs_without_a_memory_pattern(monkeypatch):
+    """onnxruntime's memory-pattern planner caches buffer layouts per input
+    shape, but the audio length Piper predicts varies run to run: the second
+    phrase with an already-seen phoneme count failed in a Reshape node and the
+    whole sentence was silently dropped. PiperVoice.load takes no session
+    options, so the handle rebuilds the session itself."""
+
+    onnxruntime = pytest.importorskip("onnxruntime")
+    built = {}
+
+    class FakeSession:
+        def __init__(self, path, sess_options=None, providers=None):
+            built.update(path=path, options=sess_options, providers=providers)
+
+    monkeypatch.setattr(onnxruntime, "InferenceSession", FakeSession)
+    session = PiperTTSHandle.func_or_class._build_session("voice.onnx")
+
+    assert isinstance(session, FakeSession)
+    assert built["path"] == "voice.onnx"
+    assert built["options"].enable_mem_pattern is False
+    assert built["providers"] == ["CPUExecutionProvider"]
+
+
+@pytest.mark.skipif(
+    not os.path.isfile(piper_handle._VOICE_PATH),
+    reason="no Piper voice (set HURI_PIPER_VOICE)",
+)
+def test_same_phrase_can_be_spoken_twice():
+    """With the real voice: three utterances of the same phrase all come out."""
+
+    deployment = PiperTTSHandle.func_or_class()
+
+    async def speak(session_id, text):
+        await deployment.start_session(session_id)
+        await deployment.push_text(session_id, text, end=True)
+        return [audio async for audio in deployment.stream_audio(session_id)]
+
+    for i in range(3):
+        chunks = asyncio.run(speak(f"s{i}", "Sure thing!"))
+        assert chunks[-1].end
+        assert sum(c.data.size for c in chunks) > 0

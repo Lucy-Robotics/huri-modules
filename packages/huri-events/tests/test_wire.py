@@ -1,5 +1,6 @@
 """Every curated event survives its wire format, and huri-events owns huri.*."""
 
+import json
 from importlib.metadata import entry_points
 
 import numpy as np
@@ -110,3 +111,32 @@ def test_motion_survives_the_wire():
     np.testing.assert_array_equal(decoded.poses, original.poses)
     np.testing.assert_array_equal(decoded.expressions, original.expressions)
     np.testing.assert_array_equal(decoded.trans, original.trans)
+
+
+def test_emotion_goes_on_the_wire_as_json():
+    """A client may subscribe to huri.emotion (a page shows what the server
+    senses). EMO's classifier hands back numpy floats, which json cannot
+    encode: to_wire() turns them into plain floats."""
+    emotion = Emotion("hap", np.float32(0.75), {"hap": np.float32(0.75)}, True)
+    wire = json.loads(json.dumps(emotion.to_wire()))
+    assert wire == {
+        "label": "hap",
+        "confidence": 0.75,
+        "scores": {"hap": 0.75},
+        "end": True,
+    }
+    assert Emotion.from_wire(wire) == Emotion("hap", 0.75, {"hap": 0.75}, True)
+
+
+def test_question_says_whether_its_emotion_is_the_previous_message_s():
+    """QAG's parallel mode: the emotion of a message lands after its question
+    left, so it goes with the next one, flagged."""
+    emotion = Emotion("sad", 0.6, {"sad": 0.6}, True)
+    question = RAGQuestion(Transcript("hi", True), emotion, emotion_earlier=True)
+    assert roundtrip(question) == question
+    assert question.to_wire()["emotion_earlier"] is True
+    # A producer on huri-events 0.1 sends no such key: the emotion is the
+    # question's own.
+    wire = {"transcript": {"text": "hi", "end": True}, "emotion": None}
+    assert RAGQuestion.from_wire(wire) == RAGQuestion(Transcript("hi", True))
+    assert RAGQuestion.from_wire(wire).emotion_earlier is False

@@ -12,9 +12,12 @@ class TAG(Module):
 
     Aggregate all transcriptions and send when transcript end.
 
-    Whisper transcribes each sliding window independently, so the start of each
-    transcript repeats the end of the previous one (with possibly different
-    casing or punctuation). Transcripts are stitched together on that overlap.
+    The end-of-turn transcript is STT's pass over the whole utterance, so it is
+    what gets sent. The window transcripts before it are stitched together as a
+    fallback, used only when that pass comes back empty: Whisper transcribes
+    each sliding window independently, so the start of each one repeats the end
+    of the previous one (with possibly different casing or punctuation), and
+    they are joined on that overlap.
 
     input: huri.transcript,
     output: huri.partial_question
@@ -76,14 +79,15 @@ class TAG(Module):
         return " ".join(cur_words + new_words)
 
     async def process(self, transcript: Transcript) -> Optional[PartialQuestion]:
-        text = transcript.text
+        text = transcript.text.strip()
 
-        if text != "":
-            self.sentence = self._merge(self.sentence, text)
-
-        if transcript.end and self.sentence != "":
-            transcript = Transcript(self.sentence, True)
-            self.sentence = ""
-            return PartialQuestion(transcript=transcript, emotion=None)
-        else:
+        if not transcript.end:
+            if text != "":
+                self.sentence = self._merge(self.sentence, text)
             return None
+
+        sentence = text or self.sentence
+        self.sentence = ""
+        if sentence == "":
+            return None
+        return PartialQuestion(transcript=Transcript(sentence, True), emotion=None)

@@ -36,7 +36,7 @@ def test_a_real_streaming_module_runs_on_a_fake_deployment():
 
 
 def test_qag_waits_for_the_emotion_when_asked_to():
-    harness = ModuleHarness(QAG, use_emotion=True)
+    harness = ModuleHarness(QAG, use_emotion=True, mode="sequential")
     emotion = Emotion("joy", 0.8, {"joy": 0.8}, True)
     assert harness.run(PartialQuestion(Transcript("hi", True), None)) == []
     assert harness.run(PartialQuestion(None, emotion)) == [

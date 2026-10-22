@@ -6,6 +6,11 @@ Speech to text (faster-whisper) as a Ray Serve deployment.
 |---|---|---|
 | `stt` | `huri.voice` → `huri.transcript` | Transcribes speech with faster-whisper (CPU or GPU) |
 
+While the user speaks, `stt` transcribes overlapping windows as they fill
+(`end=False`: live captions). When the turn ends it transcribes the whole
+utterance once more and sends that with `end=True`: one pass over the turn has
+none of the seams stitched windows show.
+
 ```sh
 pip install -e packages/huri-module-stt     # from a huri-modules checkout, next to huri-core and huri-events
 HURI_MODULES=stt ...   # enable it on the server
