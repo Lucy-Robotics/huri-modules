@@ -1,6 +1,7 @@
+import asyncio
 import logging
 import time
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from huri_events.emotion import Emotion
 from huri_events.question import PartialQuestion, RAGQuestion
@@ -30,6 +31,11 @@ class QAG(Module):
       ``emotion_earlier`` so RAG reads it as the previous message's.
     - "sequential": hold the question until its emotion lands, so RAG only
       starts once EMO has finished the turn.
+
+    :emotion_timeout: sequential mode, in seconds: how long a question waits
+    for its emotion before it is sent without one (no EMO in the session, or
+    EMO failed). The emotion, if it lands later, goes with the next question
+    as in parallel mode.
     """
 
     input_type = "huri.partial_question"
@@ -39,11 +45,18 @@ class QAG(Module):
 
     MODES = ("parallel", "sequential")
 
-    def __init__(self, use_emotion: bool = True, mode: str = "parallel"):
+    def __init__(
+        self,
+        use_emotion: bool = True,
+        mode: str = "parallel",
+        emotion_timeout: float = 10.0,
+    ):
         super().__init__()
 
         if mode not in self.MODES:
             raise ValueError(f"QAG mode must be one of {self.MODES}, got {mode!r}")
+        if emotion_timeout <= 0:
+            raise ValueError(f"emotion_timeout must be > 0, got {emotion_timeout}")
 
         self.current_transcript: Optional[Transcript] = None
         self.current_emotion: Optional[Emotion] = None
@@ -60,7 +73,46 @@ class QAG(Module):
         # When the current transcript arrived, to log how long it waited.
         self._transcript_at: float = 0.0
 
-    async def process(self, partial_question: PartialQuestion) -> Optional[RAGQuestion]:
+        # Sequential mode: set when a question leaves, which ends the wait of
+        # the call holding it. Made per hold: an Event binds to the event loop
+        # it is first awaited in.
+        self.emotion_timeout = emotion_timeout
+        self._sent: Optional[asyncio.Event] = None
+
+    async def process(
+        self, partial_question: PartialQuestion
+    ) -> AsyncIterator[RAGQuestion]:
+        question = self._aggregate(partial_question)
+        if question is not None:
+            if self._sent is not None:
+                self._sent.set()
+            yield question
+            return
+        held = self.current_transcript
+        if held is None or not self.use_emotion or self.mode != "sequential":
+            return
+        # Held for its emotion: the call that brings it sends the question.
+        self._sent = sent = asyncio.Event()
+        try:
+            await asyncio.wait_for(sent.wait(), self.emotion_timeout)
+            return
+        except asyncio.TimeoutError:
+            if self.current_transcript is not held:
+                return  # sent, or replaced by a newer sentence that waits too
+        logger.warning(
+            "[QAG] sequential: no emotion after %.1fs, question sent without "
+            "one (is EMO in this session?)",
+            self.emotion_timeout,
+        )
+        # Its emotion, if it still comes, goes with the next question; one
+        # that came late for the previous question goes with this one.
+        earlier, self._earlier_emotion = self._earlier_emotion, None
+        self._late_emotion_expected = True
+        self.current_transcript = None
+        self.current_emotion = None
+        yield RAGQuestion(held, earlier, earlier is not None)
+
+    def _aggregate(self, partial_question: PartialQuestion) -> Optional[RAGQuestion]:
         if self.use_emotion and partial_question.emotion is not None:
             if self._late_emotion_expected:
                 self._late_emotion_expected = False

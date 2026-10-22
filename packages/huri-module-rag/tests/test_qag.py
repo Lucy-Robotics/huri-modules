@@ -30,17 +30,20 @@ def _emotion(label):
 
 
 def _run(qag, *partials):
-    """One partial after the other, as TAG and EAG publish them; None where
-    QAG emitted nothing."""
+    """One partial after the other, as TAG and EAG publish them: each in its
+    own task, like the bus (a held question waits for a later partial). What
+    QAG emitted for each, None where nothing."""
 
     harness = ModuleHarness(qag)
 
     async def impl():
-        out = []
+        tasks = []
         for partial in partials:
-            emitted = await harness.feed(partial)
-            out.append(emitted[0] if emitted else None)
-        return out
+            tasks.append(asyncio.ensure_future(harness.feed(partial)))
+            await asyncio.sleep(0)  # it runs up to its first wait
+        return [
+            emitted[0] if emitted else None for emitted in await asyncio.gather(*tasks)
+        ]
 
     return asyncio.run(impl())
 
@@ -61,6 +64,25 @@ def test_sequential_holds_the_question_until_its_emotion():
     assert out[1].transcript.text == "hi"
     assert out[1].emotion.label == "hap"
     assert out[1].emotion_earlier is False
+
+
+def test_sequential_sends_the_question_without_an_emotion_that_never_comes():
+    """No EMO in the session, or EMO failed: the question still leaves, and an
+    emotion landing after all goes with the next one, as in parallel mode."""
+    qag = QAG(mode="sequential", emotion_timeout=0.05)
+
+    (alone,) = _run(qag, _transcript("hi"))
+    assert alone.transcript.text == "hi" and alone.emotion is None
+
+    late, again = _run(qag, _emotion("sad"), _transcript("again"))
+    assert late is None
+    assert again.transcript.text == "again"  # its own emotion never came either
+    assert again.emotion.label == "sad" and again.emotion_earlier is True
+
+
+def test_sequential_emotion_timeout_must_be_positive():
+    with pytest.raises(ValueError, match="emotion_timeout"):
+        QAG(mode="sequential", emotion_timeout=0)
 
 
 def test_parallel_sends_the_question_without_waiting_for_its_emotion():
