@@ -1087,11 +1087,15 @@ plan() {
 
   # --- STT (faster-whisper) --------------------------------------------------
   # CPU int8 is genuinely realtime for base/small, so STT only takes GPU when
-  # there is room left over. On ROCm it is the one component that *is* supported.
+  # there is room left over. Not on ROCm by default: on an RX 7700S (gfx1102)
+  # the CTranslate2 ROCm build returned a different transcript for the same
+  # audio from one call to the next (float16: 0/8 right, int8: 2/8; empty or
+  # garbage text, and the replica died under two concurrent calls), while CPU
+  # int8 got 8/8, faster. --stt-device gpu still puts it there.
   local stt_cost="${VRAM_STT[$STT_SIZE]}"
-  if [[ "$GPU_VENDOR" == "amd" ]] && (( pool >= stt_cost )); then
-    P_STT_DEV="gpu"; P_STT_VRAM=$stt_cost; pool=$(( pool - stt_cost ))
-    P_STT_WHY="CTranslate2 ROCm build"
+  if [[ "$GPU_VENDOR" == "amd" ]]; then
+    P_STT_DEV="cpu"
+    P_STT_WHY="int8 on $CPU_CORES cores — CTranslate2's ROCm build garbles transcripts (--stt-device gpu to try it)"
   elif [[ "$GPU_VENDOR" == "nvidia" ]] && (( pool >= stt_cost )); then
     P_STT_DEV="gpu"; P_STT_VRAM=$stt_cost; pool=$(( pool - stt_cost ))
     P_STT_WHY="spare VRAM after TTS/LLM/gesture"
