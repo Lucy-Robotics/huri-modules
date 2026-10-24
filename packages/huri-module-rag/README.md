@@ -71,6 +71,14 @@ are still saved at the end, but never sent to the LLM during it. Without
 `long`, past sessions and profile facts are not recalled and the session is not
 saved.
 
+A session answers one question at a time: one asked during an answer waits
+for it, then has it in its history. Each robot's connection is its own
+session, so robots never wait for each other, and one `RAGHandle` serves them
+all (`max_ongoing_requests` 64; the LLM server is the real limit). Long-term
+memory is per `user_id`, which is per machine: two sessions of one machine
+ending at once save one after the other, so neither loses the other's
+corrections.
+
 `rag` and the ingestion and memory tools (`python -m huri_rag.ingestion`,
 `memory_inspect`, `memory_maintenance`) need the `rag` extra (Qdrant client,
 sentence-transformers, httpx, pypdf, semantic_chunker); `qag` only joins events

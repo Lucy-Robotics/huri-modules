@@ -134,7 +134,10 @@ class RAGQuery:
     long_term: bool = True
 
 
-@serve.deployment(name="RAGHandle")
+# One RAGHandle serves every robot, each with up to an answer, a fold and a
+# save in flight; Serve's default (5) would queue the third robot. The LLM
+# server is the real limit. Override per deployment in the Serve config.
+@serve.deployment(name="RAGHandle", max_ongoing_requests=64)
 class RAGHandle:
     """Stateless RAG processor. Streams LLM tokens to the caller."""
 
@@ -142,6 +145,8 @@ class RAGHandle:
 
     def __init__(self, **kwargs):
         self._maintenance_task: asyncio.Task | None = None
+        # One long-term save at a time per user (see save_conversation).
+        self._user_locks: dict[str, asyncio.Lock] = {}
         self._cfg = RAGDeploymentConfig(**kwargs)
         self._apply_config()
 
@@ -472,10 +477,16 @@ class RAGHandle:
 
         vector = await self._embed(summary)
         self._ensure_memory_collection(len(vector))
-        if self._cfg.memory_reconcile:
-            await self._reconcile_memories(_user_id, summary, vector)
-        point = memory_point(vector, summary, _user_id, "conversation", importance)
-        self._qdrant.upsert(collection_name=self._cfg.memory_collection, points=[point])
+        # Two sessions of one user (two clients on one machine) may end at
+        # once: each reconciles against what the other saved, or one's
+        # corrections overwrite the other's. Per replica: RAGHandle has one.
+        async with self._user_locks.setdefault(_user_id, asyncio.Lock()):
+            if self._cfg.memory_reconcile:
+                await self._reconcile_memories(_user_id, summary, vector)
+            point = memory_point(vector, summary, _user_id, "conversation", importance)
+            self._qdrant.upsert(
+                collection_name=self._cfg.memory_collection, points=[point]
+            )
         print(
             f"[RAG] Saved conversation memory (importance={importance}): "
             f"{summary[:80]}..."
@@ -1029,7 +1040,13 @@ class RAG(ModuleWithHandle, ModuleWithId):
         )
         self.history: list[dict] = []  # short-term memory
         self.working = WorkingMemory()
+        # Turns out of short-term memory but not folded into working memory
+        # yet: still sent verbatim, so no question misses them meanwhile.
+        self._folding: list[dict] = []
         self._working_lock = asyncio.Lock()
+        # One answer at a time: the bus runs each question in its own task, so
+        # a question asked during an answer waits for it, then knows it.
+        self._answer_lock = asyncio.Lock()
 
     async def process(self, data: RAGQuestion) -> AsyncGenerator[Token, None]:
         """
@@ -1039,31 +1056,36 @@ class RAG(ModuleWithHandle, ModuleWithId):
         question_text = data.transcript.text
 
         emotion = data.emotion
-        query = RAGQuery(
-            _user_id=self._user_id if self._user_id else "anonymous",
-            question=question_text,
-            preferences=self.preferences,
-            emotion=(
-                {"label": emotion.label, "confidence": float(emotion.confidence)}
-                if emotion is not None
-                else None
-            ),
-            emotion_earlier=(
-                bool(data.emotion_earlier) if emotion is not None else False
-            ),
-            history=list(self.history) if self._short else [],  # prior turns
-            working=self.working,
-            long_term=self._long,
-        )
+        async with self._answer_lock:
+            query = RAGQuery(
+                _user_id=self._user_id if self._user_id else "anonymous",
+                question=question_text,
+                preferences=self.preferences,
+                emotion=(
+                    {"label": emotion.label, "confidence": float(emotion.confidence)}
+                    if emotion is not None
+                    else None
+                ),
+                emotion_earlier=(
+                    bool(data.emotion_earlier) if emotion is not None else False
+                ),
+                # prior turns
+                history=self._folding + (list(self.history) if self._short else []),
+                working=self.working,
+                long_term=self._long,
+            )
 
-        parts: list[str] = []
-        stream = self._handle.options(stream=True).stream.remote(query)
-        async for delta in stream:  # type: ignore[union-attr]
-            parts.append(delta)
-            yield Token(text=delta, end=False)
-        yield Token(text="", end=True)
+            parts: list[str] = []
+            stream = self._handle.options(stream=True).stream.remote(query)
+            async for delta in stream:  # type: ignore[union-attr]
+                parts.append(delta)
+                yield Token(text=delta, end=False)
+            yield Token(text="", end=True)
 
-        evicted = self._record_turn(question_text, "".join(parts))
+            evicted = self._record_turn(question_text, "".join(parts))
+            if self._working:
+                self._folding.extend(evicted)
+        # Outside the answer lock: the next question need not wait for it.
         if evicted and self._working:
             await self._fold_into_working_memory(evicted)
 
@@ -1086,16 +1108,19 @@ class RAG(ModuleWithHandle, ModuleWithId):
                 )
             except Exception:
                 print(f"[RAG] working memory update failed:\n{traceback.format_exc()}")
+            self._folding = [m for m in self._folding if all(m is not t for t in turns)]
 
     async def finalize(self) -> None:
         if not self._long:
             return
         async with self._working_lock:
-            if not self.history and not self.working:
+            # A fold cancelled with the session left its turns in _folding.
+            history = self._folding + self.history
+            if not history and not self.working:
                 return
             try:
                 await self._handle.save_conversation.remote(
-                    self._user_id or "anonymous", list(self.history), self.working
+                    self._user_id or "anonymous", history, self.working
                 )
             except Exception:
                 print(f"[RAG] finalize failed:\n{traceback.format_exc()}")

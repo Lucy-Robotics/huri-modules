@@ -130,6 +130,121 @@ def test_an_unknown_memory_is_refused():
         _talk("a", memory="short,episodic")
 
 
+class GatedLLM(FakeLLM):
+    """FakeLLM whose answer to "a" and folds wait to be let through, to ask
+    questions while one is answered or folded."""
+
+    def __init__(self):
+        super().__init__()
+        self.log = []
+        self.answer_gate = asyncio.Event()
+        self.fold_gate = asyncio.Event()
+        self.folding = asyncio.Event()
+
+    async def stream(self, query):
+        self.log.append(f"start {query.question}")
+        if query.question == "a":
+            await self.answer_gate.wait()
+        async for delta in super().stream(query):
+            yield delta
+        self.log.append(f"end {query.question}")
+
+    async def fold_into_working_memory(self, working, turns):
+        self.folding.set()
+        await self.fold_gate.wait()
+        return await super().fold_into_working_memory(working, turns)
+
+
+def _harness(fake, **args):
+    return ModuleHarness(RAG, handle=LocalHandle(fake), user_id="u", **args)
+
+
+def _ask(harness, question):
+    return asyncio.create_task(
+        harness.feed(RAGQuestion(Transcript(question, True), None))
+    )
+
+
+def test_a_question_asked_during_an_answer_waits_for_it():
+    async def session():
+        fake = GatedLLM()
+        harness = _harness(fake)
+        a = _ask(harness, "a")
+        await asyncio.sleep(0)
+        b = _ask(harness, "b")
+        await asyncio.sleep(0.01)
+        assert fake.log == ["start a"]  # "b" waits for "a"'s answer
+        fake.answer_gate.set()
+        await asyncio.gather(a, b)
+        return fake
+
+    fake = asyncio.run(session())
+    assert fake.log == ["start a", "end a", "start b", "end b"]
+    # ...so its LLM knows the exchange it waited for.
+    assert [m["content"] for m in fake.queries[1].history] == ["a", "re: a"]
+
+
+def test_a_question_asked_during_a_fold_is_answered_and_sees_the_folded_turns():
+    async def session():
+        fake = GatedLLM()
+        fake.answer_gate.set()
+        harness = _harness(fake, max_history_turns=1)
+        await _ask(harness, "a")
+        b = _ask(harness, "b")  # pushes "a" out: its fold waits
+        await fake.folding.wait()
+        c = _ask(harness, "c")
+        async with asyncio.timeout(1):  # answered while "a" is being folded
+            while "end c" not in fake.log:
+                await asyncio.sleep(0)
+        fake.fold_gate.set()
+        await asyncio.gather(b, c)
+        await _ask(harness, "d")
+        return fake
+
+    fake = asyncio.run(session())
+    during, after = fake.queries[2], fake.queries[3]
+    # "a" is not in working memory yet, so it is still sent verbatim.
+    assert [m["content"] for m in during.history] == ["a", "re: a", "b", "re: b"]
+    assert not during.working
+    assert [m["content"] for m in after.history] == ["c", "re: c"]
+    assert after.working.notes == ["a", "b"]
+
+
+def test_a_session_ending_during_a_fold_saves_the_turns_being_folded():
+    async def session():
+        fake = GatedLLM()
+        fake.answer_gate.set()
+        harness = _harness(fake, max_history_turns=1)
+        await _ask(harness, "a")
+        b = _ask(harness, "b")
+        await fake.folding.wait()
+        b.cancel()  # the client left: the server cancels the session's tasks
+        await asyncio.gather(b, return_exceptions=True)
+        await harness.finalize()
+        return fake
+
+    fake = asyncio.run(session())
+    _, history, working = fake.saved
+    assert [m["content"] for m in history] == ["a", "re: a", "b", "re: b"]
+    assert not working
+
+
+def test_robots_do_not_wait_for_each_other():
+    async def server():
+        fake = GatedLLM()  # one RAGHandle for every robot, as on the server
+        robot_1, robot_2 = _harness(fake), _harness(fake)
+        a = _ask(robot_1, "a")
+        await asyncio.sleep(0)
+        await asyncio.wait_for(_ask(robot_2, "b"), 1)  # while "a" is answered
+        fake.answer_gate.set()
+        await a
+        return fake
+
+    fake = asyncio.run(server())
+    assert fake.log == ["start a", "start b", "end b", "end a"]
+    assert fake.queries[1].history == []  # robot 2 never hears robot 1's talk
+
+
 def _in_json_mode(llm):
     """An _llm_stream answering with `llm(system, prompt)`, that memory
     bookkeeping must call in JSON mode."""
@@ -144,6 +259,7 @@ def _in_json_mode(llm):
 def _handle(**config):
     rag_handle = object.__new__(RAGHandle.func_or_class)
     rag_handle._cfg = RAGDeploymentConfig(**config)
+    rag_handle._user_locks = {}
     return rag_handle
 
 
@@ -328,6 +444,67 @@ def test_reconciliation_can_be_turned_off():
     reply = '{"changes": [{"old": "Pixel", "new": "Felix"}]}'
     prompts = _save(store, reply, memory_reconcile=False)
     assert store.queried == 0 and len(prompts) == 1 and store.deleted == []
+
+
+class SharedStore:
+    """A fake Qdrant memory collection that two sessions write to: every
+    stored memory is similar."""
+
+    def __init__(self, *texts):
+        self.points = {
+            f"old{i}": SimpleNamespace(id=f"old{i}", payload={"text": t})
+            for i, t in enumerate(texts, 1)
+        }
+
+    def query_points(self, **kwargs):
+        return SimpleNamespace(points=list(self.points.values()))
+
+    def upsert(self, collection_name, points):
+        for p in points:
+            self.points[p.id] = SimpleNamespace(id=p.id, payload=p.payload)
+
+
+def test_sessions_of_one_user_ending_together_keep_both_corrections():
+    # Two clients on one machine share its user_id; both end at once.
+    rag_handle = _handle()
+    replies = {
+        "Pixel was renamed Felix.": {"old": "Pixel", "new": "Felix"},
+        "Felix was renamed Tom.": {"old": "Felix", "new": "Tom"},
+    }
+
+    async def llm(system, prompt, max_tokens=300):
+        await asyncio.sleep(0)  # the other session runs meanwhile
+        summary = prompt.split("user: ")[-1]
+        if "Older memories" not in prompt:
+            return json.dumps({"summary": summary, "importance": 7})
+        new = prompt.split("A new memory about a person:\n")[1].split("\n")[0]
+        return json.dumps({"changes": [replies[new]]})
+
+    async def embed(text):
+        return [0.0]
+
+    rag_handle._llm_stream = _in_json_mode(llm)
+    rag_handle._embed = embed
+    rag_handle._ensure_memory_collection = lambda size: None
+    rag_handle._qdrant = store = SharedStore("Ana's cat is called Pixel.")
+
+    async def both():
+        await asyncio.gather(
+            *(
+                rag_handle.save_conversation(
+                    "ana", [{"role": "user", "content": s}] * 2
+                )
+                for s in replies
+            )
+        )
+
+    asyncio.run(both())
+    cat = store.points["old1"].payload
+    assert cat["text"] == "Ana's cat is called Tom."
+    assert [h["changes"] for h in cat["history"]] == [
+        ["Pixel -> Felix"],
+        ["Felix -> Tom"],
+    ]
 
 
 def test_ages_read_like_a_person_would_say_them():
