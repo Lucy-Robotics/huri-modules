@@ -1,11 +1,11 @@
 import asyncio
 import json
 import os
+import re
 import traceback
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Sequence
 
 import httpx
 from huri_events.question import RAGQuestion
@@ -15,7 +15,6 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     MatchValue,
-    PointIdsList,
     PointStruct,
 )
 from ray import serve
@@ -23,6 +22,14 @@ from ray.serve import handle
 
 from huri_core.core.module import ModuleWithHandle, ModuleWithId
 
+from .memory_maintenance import (
+    MARKER_TYPE,
+    consolidate_and_prune,
+    memory_point,
+    plan,
+    recency,
+    scroll_all,
+)
 from .qdrant_utils import make_qdrant_client
 
 _RETRIABLE_EXC = (
@@ -44,6 +51,27 @@ _DEFAULT_PERSONA = os.environ.get(
 
 # Labels of EMO's classifier (huri-module-emo), as the LLM should read them.
 _EMOTION_NAMES = {"neu": "neutral", "hap": "happy", "ang": "angry", "sad": "sad"}
+
+
+def _ago(iso: str | None, now: datetime | None = None) -> str:
+    """How long ago an ISO date is, as the LLM should read it."""
+    try:
+        days = ((now or datetime.now()) - datetime.fromisoformat(iso or "")).days
+    except ValueError:
+        return "some time ago"
+    if days < 1:
+        return "today"
+    if days < 2:
+        return "yesterday"
+    if days < 14:
+        return f"{days} days ago"
+    if days < 60:
+        return f"{days // 7} weeks ago"
+    return f"{days // 30} months ago"
+
+
+# The memories a session can use (see WorkingMemory), all on by default.
+MEMORIES = ("short", "working", "long")
 
 
 class RAGDeploymentConfig(BaseModel):
@@ -71,6 +99,22 @@ class RAGDeploymentConfig(BaseModel):
     memory_w_importance: float = 0.2
     memory_maintenance_days: float = 5.0
     memory_maintenance_check_hours: float = 6.0
+    # Saving a memory corrects the user's similar older ones it updates.
+    memory_reconcile: bool = True
+    memory_reconcile_top_k: int = 5
+    memory_reconcile_threshold: float = 0.5
+
+    working_memory_capacity: int = 7
+
+
+@dataclass
+class WorkingMemory:
+
+    summary: str = ""
+    notes: list[str] = field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        return bool(self.summary or self.notes)
 
 
 @dataclass
@@ -86,9 +130,14 @@ class RAGQuery:
     # emotion lands after its question was answered and goes with the next).
     emotion: dict | None = None
     emotion_earlier: bool = False
+    working: WorkingMemory = field(default_factory=WorkingMemory)
+    long_term: bool = True
 
 
-@serve.deployment(name="RAGHandle")
+# One RAGHandle serves every robot, each with up to an answer, a fold and a
+# save in flight; Serve's default (5) would queue the third robot. The LLM
+# server is the real limit. Override per deployment in the Serve config.
+@serve.deployment(name="RAGHandle", max_ongoing_requests=64)
 class RAGHandle:
     """Stateless RAG processor. Streams LLM tokens to the caller."""
 
@@ -96,6 +145,8 @@ class RAGHandle:
 
     def __init__(self, **kwargs):
         self._maintenance_task: asyncio.Task | None = None
+        # One long-term save at a time per user (see save_conversation).
+        self._user_locks: dict[str, asyncio.Lock] = {}
         self._cfg = RAGDeploymentConfig(**kwargs)
         self._apply_config()
 
@@ -108,7 +159,6 @@ class RAGHandle:
         self.embedding_url = cfg.embedding_url or cfg.llm_url
         self._qdrant = make_qdrant_client(cfg.qdrant_url, cfg.verify_ssl)
         print(f"[RAGHandle] Connected to Qdrant at {cfg.qdrant_url}")
-        # One-shot warning bookkeeping for _search (see there).
         self._warned_collections: set[str] = set()
         self._report_document_collection()
         self._embed_client = httpx.AsyncClient(timeout=30.0, verify=cfg.verify_ssl)
@@ -242,33 +292,37 @@ class RAGHandle:
             parts.append(d)
         return "".join(parts)
 
-    def _recency_importance(self, payload: dict) -> tuple[float, int]:
-        """
-        Exponential decay factor and importance for one memory point.
-        """
-
-        importance: int = payload.get("importance", 3)
-        half_life = max(self._cfg.memory_half_life_days * (importance / 5.0), 0.5)
-        try:
-            last = datetime.fromisoformat(
-                payload.get("last_accessed") or payload["created_at"]
+    async def _llm_json(
+        self, system_prompt: str, user_prompt: str, max_tokens: int = 500
+    ) -> Any:
+        """The LLM's reply as JSON, in the provider's JSON mode, for memory
+        bookkeeping (low temperature)."""
+        preferences = {"max_length": max_tokens, "temperature": 0.2, "json": True}
+        parts = [
+            d
+            async for d in self._llm_stream(
+                system_prompt, user_prompt, preferences, None
             )
-            age_days = (datetime.now() - last).total_seconds() / 86400.0
-        except Exception:
-            age_days = 0.0
-        return 0.5 ** (age_days / half_life), importance
+        ]
+        raw = "".join(parts)
+        try:
+            return self._parse_json(raw)
+        except ValueError:
+            print(f"[RAG] LLM reply is not JSON: {raw[:300]!r}")
+            raise
 
     def _memory_strength(self, payload: dict, relevance: float) -> float:
-        recency, importance = self._recency_importance(payload)
         cfg = self._cfg
+        importance: int = payload.get("importance", 3)
         return (
             cfg.memory_w_relevance * relevance
-            + cfg.memory_w_recency * recency
+            + cfg.memory_w_recency * recency(payload, cfg.memory_half_life_days)
             + cfg.memory_w_importance * (importance / 10.0)
         )
 
     def _search_memories(self, query_vector: list[float], _user_id: str) -> list[str]:
-        """Retrieve, re-rank (relevance+recency+importance), reinforce, return texts."""
+        """Retrieve, re-rank (relevance+recency+importance), reinforce, return
+        texts dated and oldest first, for the LLM to prefer the latest."""
         try:
             hits = self._qdrant.query_points(
                 collection_name=self._cfg.memory_collection,
@@ -278,9 +332,7 @@ class RAGHandle:
                         FieldCondition(key="_user_id", match=MatchValue(value=_user_id))
                     ],
                     must_not=[
-                        FieldCondition(
-                            key="type", match=MatchValue(value="maintenance_marker")
-                        )
+                        FieldCondition(key="type", match=MatchValue(value=MARKER_TYPE))
                     ],
                 ),
                 limit=10,
@@ -309,30 +361,107 @@ class RAGHandle:
                 )
             except Exception:
                 pass
-        return [t for p in top if (t := (p.payload or {}).get("text", ""))]
+        top.sort(key=lambda p: (p.payload or {}).get("created_at") or "")
+        return [
+            self._dated(p.payload or {}) for p in top if (p.payload or {}).get("text")
+        ]
 
-    async def save_conversation(self, _user_id: str, history: list) -> None:
-        """Summarize a finished session into one memory point. Called at disconnect."""
-        if not history or len(history) < 2:
+    @staticmethod
+    def _dated(payload: dict) -> str:
+        when = _ago(payload.get("created_at"))
+        if payload.get("history"):
+            when += f" (corrected {_ago(payload['history'][-1]['until'])})"
+        return f"{when}: {payload['text']}"
+
+    @staticmethod
+    def _parse_json(raw: str) -> Any:
+        """The LLM's JSON reply, without the markdown fence it may add."""
+        return json.loads(
+            raw.strip()
+            .removeprefix("```json")
+            .removeprefix("```")
+            .removesuffix("```")
+            .strip()
+        )
+
+    @staticmethod
+    def _working_memory_text(working: WorkingMemory) -> str:
+        parts = []
+        if working.summary:
+            parts.append(f"Earlier in this conversation: {working.summary}")
+        if working.notes:
+            parts.append("Keep in mind:\n- " + "\n- ".join(working.notes))
+        return "\n".join(parts)
+
+    async def fold_into_working_memory(
+        self, working: WorkingMemory, turns: list
+    ) -> WorkingMemory:
+        """
+        Working memory updated with turns leaving short-term memory.
+        """
+
+        capacity = self._cfg.working_memory_capacity
+        transcript = "\n".join(f"{m['role']}: {m['content']}" for m in turns)
+        prompt = (
+            "You keep track of an ongoing conversation. Here is what you keep "
+            "in mind so far (may be empty):\n"
+            f"{self._working_memory_text(working) or '(nothing yet)'}\n\n"
+            "These exchanges are now leaving your short-term memory:\n"
+            f"{transcript}\n\n"
+            "Update what you keep in mind. Reply ONLY with JSON, no markdown: "
+            '{"summary": "...", "notes": ["..."]}. The summary tells the '
+            "conversation so far in at most 4 sentences. The notes are at most "
+            f"{capacity} short facts about the person, worth keeping in mind "
+            "for the rest of the conversation: their names, facts, preferences "
+            "and goals, their open questions, and anything you promised them. "
+            "Not what you said or suggested. When a fact changed (a new name, "
+            "a change of plan), keep only its latest version. Drop small talk "
+            "and the least useful notes first."
+        )
+        try:
+            data = await self._llm_json("You are a working memory.", prompt)
+            summary = str(data["summary"]).strip()
+            notes = [str(n).strip() for n in data.get("notes", []) if str(n).strip()]
+            return WorkingMemory(summary=summary, notes=notes[:capacity])
+        except Exception:
+            print(
+                "[RAG] working memory update failed, keeping the raw turns:\n"
+                f"{traceback.format_exc()}"
+            )
+            summary = f"{working.summary}\n{transcript}".strip()[-1500:]
+            return WorkingMemory(summary=summary, notes=working.notes)
+
+    async def save_conversation(
+        self, _user_id: str, history: list, working: WorkingMemory | None = None
+    ) -> None:
+        """Summarize a finished session into one memory point. Called at disconnect.
+
+        ``history`` is only the session's last turns (short-term memory); the
+        rest of it is in ``working``.
+        """
+        if not working and (not history or len(history) < 2):
             return
         transcript = "\n".join(f"{m['role']}: {m['content']}" for m in history)[-6000:]
+        if working:
+            # Labelled, or the LLM reads it as background and summarizes only
+            # the last turns.
+            transcript = (
+                "PART 1, the start of the conversation, as you noted it:\n"
+                f"{self._working_memory_text(working)}\n\n"
+                f"PART 2, how the conversation ended:\n{transcript}"
+            )
         prompt = (
-            "Summarize this conversation in 2-4 sentences, keeping any personal "
-            "facts, preferences, names, or commitments mentioned. Then rate 1-10 "
+            "Summarize this whole conversation in 2-4 sentences, from start to "
+            "end, keeping every personal fact, preference, name, or commitment "
+            "mentioned anywhere in it. When something changed, say plainly "
+            'what it was and what it is now (e.g. "the cat, formerly called '
+            'Pixel, is now called Felix"). Then rate 1-10 '
             "how important it is to remember (small talk=1-2, personal facts or "
             "preferences=7-10). Reply ONLY with JSON, no markdown: "
             '{"summary": "...", "importance": N}\n\n' + transcript
         )
         try:
-            raw = await self._llm_complete("You are a memory summarizer.", prompt)
-            cleaned = (
-                raw.strip()
-                .removeprefix("```json")
-                .removeprefix("```")
-                .removesuffix("```")
-                .strip()
-            )
-            data = json.loads(cleaned)
+            data = await self._llm_json("You are a memory summarizer.", prompt)
             summary = str(data["summary"])
             importance = max(1, min(int(data["importance"]), 10))
         except Exception:
@@ -348,29 +477,137 @@ class RAGHandle:
 
         vector = await self._embed(summary)
         self._ensure_memory_collection(len(vector))
-        now = datetime.now().isoformat()
-        self._qdrant.upsert(
-            collection_name=self._cfg.memory_collection,
-            points=[
-                PointStruct(
-                    id=str(uuid.uuid4()),
-                    vector=vector,
-                    payload={
-                        "text": summary,
-                        "_user_id": _user_id,
-                        "type": "conversation",
-                        "created_at": now,
-                        "last_accessed": now,
-                        "access_count": 0,
-                        "importance": importance,
-                    },
-                )
-            ],
-        )
+        # Two sessions of one user (two clients on one machine) may end at
+        # once: each reconciles against what the other saved, or one's
+        # corrections overwrite the other's. Per replica: RAGHandle has one.
+        async with self._user_locks.setdefault(_user_id, asyncio.Lock()):
+            if self._cfg.memory_reconcile:
+                await self._reconcile_memories(_user_id, summary, vector)
+            point = memory_point(vector, summary, _user_id, "conversation", importance)
+            self._qdrant.upsert(
+                collection_name=self._cfg.memory_collection, points=[point]
+            )
         print(
             f"[RAG] Saved conversation memory (importance={importance}): "
             f"{summary[:80]}..."
         )
+
+    @staticmethod
+    def _stated_change(old: str, repl: str, new_memory: str) -> tuple[str, str] | None:
+        """What changed from `old` to `repl` (Pixel -> Felix in "orange cat
+        named Pixel" -> "orange cat named Felix"), if the new memory says
+        both and it is short; None otherwise."""
+        a, b = old.split(), repl.split()
+        while a and b and a[0].lower() == b[0].lower():
+            a, b = a[1:], b[1:]
+        while a and b and a[-1].lower() == b[-1].lower():
+            a, b = a[:-1], b[:-1]
+        was, now = (" ".join(w).strip(".,;:!?\"'") for w in (a, b))
+        lowered = new_memory.lower()
+        if (
+            was
+            and now
+            and len(a) <= 4
+            and was.lower() in lowered
+            and now.lower() in lowered
+        ):
+            return was, now
+        return None
+
+    async def _reconcile_memories(
+        self, _user_id: str, new: str, vector: list[float]
+    ) -> None:
+        """
+        Correct the user's older memories with what a new one says changed,
+        so that "the cat was renamed Felix" turns "the cat is called Pixel"
+        into "the cat is called Felix" instead of being recalled next to it.
+        After Mem0 (Chhikara et al., 2025, arXiv:2504.19413), but the LLM
+        only names each change (old -> new): the code applies it, and only
+        when both are in the new memory and the old one in an older memory,
+        so a confused LLM changes nothing rather than corrupting memories.
+        """
+
+        cfg = self._cfg
+        try:
+            hits = self._qdrant.query_points(
+                collection_name=cfg.memory_collection,
+                query=vector,
+                query_filter=Filter(
+                    must=[
+                        FieldCondition(key="_user_id", match=MatchValue(value=_user_id))
+                    ],
+                    must_not=[
+                        FieldCondition(key="type", match=MatchValue(value=MARKER_TYPE))
+                    ],
+                ),
+                limit=cfg.memory_reconcile_top_k,
+                score_threshold=cfg.memory_reconcile_threshold,
+            ).points
+        except Exception:
+            return  # nothing stored yet
+        if not hits:
+            return
+
+        older = "\n".join(f"- {(p.payload or {}).get('text', '')}" for p in hits)
+        prompt = (
+            f"A new memory about a person:\n{new}\n\n"
+            f"Older memories about them:\n{older}\n\n"
+            "Does the new memory say that something in the older ones changed "
+            "(a new name, a move, a change of plan)? List each change: the "
+            "outdated word or short phrase, exactly as written in an older "
+            "memory, and what replaces it, exactly as written in the new one. "
+            'Reply ONLY with JSON: {"changes": [{"old": "...", "new": "..."}]}, '
+            "with an empty list when nothing changed."
+        )
+        try:
+            reply = await self._llm_json("You are a memory keeper.", prompt)
+            proposed = [
+                (str(c["old"]).strip(), str(c["new"]).strip())
+                for c in reply.get("changes", [])
+                if isinstance(c, dict) and "old" in c and "new" in c
+            ]
+        except Exception:
+            print(f"[RAG] memory reconciliation failed:\n{traceback.format_exc()}")
+            return
+
+        stated = [self._stated_change(*c, new) for c in proposed]
+        changes = {c for c in stated if c is not None}
+        if len(changes) < len(proposed):
+            print(f"[RAG] Memory changes proposed: {proposed}, kept: {changes}")
+        for p in hits:
+            text = (p.payload or {}).get("text", "")
+            fixed, applied = text, []
+            for was, now in sorted(changes):
+                pattern = rf"\b{re.escape(was)}\b"
+                if re.search(pattern, fixed, flags=re.IGNORECASE):
+                    fixed = re.sub(pattern, now, fixed, flags=re.IGNORECASE)
+                    applied.append(f"{was} -> {now}")
+            if not applied:
+                continue
+            # The text before, kept to audit or undo the correction.
+            history = [
+                *(p.payload or {}).get("history", []),
+                {
+                    "text": text,
+                    "until": datetime.now().isoformat(),
+                    "changes": applied,
+                },
+            ]
+            self._qdrant.upsert(
+                collection_name=cfg.memory_collection,
+                points=[
+                    PointStruct(
+                        id=p.id,
+                        vector=await self._embed(fixed),
+                        payload={
+                            **(p.payload or {}),
+                            "text": fixed,
+                            "history": history,
+                        },
+                    )
+                ],
+            )
+            print(f"[RAG] Corrected memory: {fixed[:80]}...")
 
     def _last_maintenance(self) -> datetime | None:
         try:
@@ -395,7 +632,7 @@ class RAGHandle:
                     id=self._MAINTENANCE_MARKER_ID,
                     vector=[0.0] * vector_size,
                     payload={
-                        "type": "maintenance_marker",
+                        "type": MARKER_TYPE,
                         "last_run": datetime.now().isoformat(),
                     },
                 )
@@ -420,92 +657,21 @@ class RAGHandle:
             await asyncio.sleep(check_secs)
 
     async def _run_maintenance(self) -> None:
-        """Decay-based pruning + consolidation. Same logic as memory_maintenance.py."""
-        from collections import defaultdict
-
-        DELETE_BELOW, CONSOLIDATE_BELOW = 0.05, 0.30
-
-        # scroll everything
-        points, offset = [], None
+        """Decay-based pruning + consolidation, as memory_maintenance.py does."""
+        collection = self._cfg.memory_collection
         try:
-            while True:
-                batch, offset = self._qdrant.scroll(
-                    collection_name=self._cfg.memory_collection,
-                    limit=200,
-                    offset=offset,
-                    with_payload=True,
-                    with_vectors=False,
-                )
-                points.extend(batch)
-                if offset is None:
-                    break
+            points = scroll_all(self._qdrant, collection)
         except Exception:
             return  # collection doesn't exist yet — nothing to do
-
-        def base_strength(payload: dict) -> float:
-            recency, imp = self._recency_importance(payload)
-            return recency * (imp / 10.0)
-
-        to_delete, weak_by_user = [], defaultdict(list)
-        vector_size = None
-        for p in points:
-            payload = p.payload or {}
-            if payload.get("type") == "maintenance_marker":
-                continue
-            s = base_strength(payload)
-            if s < DELETE_BELOW:
-                to_delete.append(p)
-            elif s < CONSOLIDATE_BELOW:
-                weak_by_user[payload.get("_user_id", "anonymous")].append(p)
-
-        for user, weak in weak_by_user.items():
-            if len(weak) < 3:
-                continue
-            texts = [(p.payload or {})["text"] for p in weak]
-            merged = (
-                await self._llm_complete(
-                    "You are a memory consolidator.",
-                    "These are old memories about conversations with the "
-                    "same person. Merge them into a single 3-5 sentence "
-                    "memory keeping only durable facts, preferences and "
-                    "recurring themes. Drop one-off small talk.\n\n"
-                    + "\n---\n".join(texts),
-                )
-            ).strip()
-            if not merged:
-                continue
-            vec = await self._embed(merged)
-            vector_size = len(vec)
-            now = datetime.now().isoformat()
-            imp = min(max((p.payload or {}).get("importance", 3) for p in weak) + 1, 10)
-            self._qdrant.upsert(
-                collection_name=self._cfg.memory_collection,
-                points=[
-                    PointStruct(
-                        id=str(uuid.uuid4()),
-                        vector=vec,
-                        payload={
-                            "text": merged,
-                            "_user_id": user,
-                            "type": "conversation_consolidated",
-                            "created_at": now,
-                            "last_accessed": now,
-                            "access_count": 0,
-                            "importance": imp,
-                        },
-                    )
-                ],
-            )
-            to_delete.extend(weak)
-            print(f"[RAG] Consolidated {len(weak)} memories → 1 for user {user}")
-
-        if to_delete:
-            self._qdrant.delete(
-                collection_name=self._cfg.memory_collection,
-                points_selector=PointIdsList(points=[p.id for p in to_delete]),
-            )
-            print(f"[RAG] Deleted {len(to_delete)} decayed memories")
-
+        to_delete, weak_by_user = plan(points, self._cfg.memory_half_life_days)
+        vector_size = await consolidate_and_prune(
+            self._qdrant,
+            collection,
+            to_delete,
+            weak_by_user,
+            self._llm_complete,
+            self._embed,
+        )
         if vector_size is None:
             vector_size = len(await self._embed("marker"))
         self._ensure_memory_collection(vector_size)
@@ -585,6 +751,7 @@ class RAGHandle:
         memories: list[str] | None = None,
         emotion: dict | None = None,
         emotion_earlier: bool = False,
+        working: WorkingMemory | None = None,
     ) -> tuple[str, str]:
         persona = preferences.get("persona", _DEFAULT_PERSONA)
         parts = [persona]
@@ -620,10 +787,13 @@ class RAGHandle:
         memory_block = ""
         if memories:
             memory_block = (
-                "Things you remember from previous conversations with this person:\n- "
+                "Things you remember from previous conversations with this person, "
+                "oldest first (when two disagree, the more recent one is right):\n- "
                 + "\n- ".join(memories)
                 + "\n\n"
             )
+        if working:
+            memory_block += self._working_memory_text(working) + "\n\n"
 
         if not chunks:
             user_prompt = (
@@ -655,100 +825,29 @@ class RAGHandle:
 
         return system_prompt, user_prompt
 
-    async def _stream_ollama(
-        self, messages: list, max_tokens: int, temperature: float = 0.7
-    ) -> AsyncGenerator[str, None]:
-        url = f"{self._cfg.llm_url}/api/chat"
-        payload = {
-            "model": self._cfg.llm_model,
-            "messages": messages,
-            "stream": True,
-            "options": {"num_predict": max_tokens, "temperature": temperature},
-        }
-        attempts = self._cfg.llm_retries
-        for attempt in range(1, attempts + 1):
-            yielded_any = False
-            try:
-                async with self._llm_client.stream("POST", url, json=payload) as resp:
-                    resp.raise_for_status()
-                    async for line in resp.aiter_lines():
-                        if not line:
-                            continue
-                        try:
-                            chunk = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-                        delta = chunk.get("message", {}).get("content", "")
-                        if delta:
-                            yielded_any = True
-                            yield delta
-                        if chunk.get("done"):
-                            return
-                return
-            except _RETRIABLE_EXC as e:
-                if yielded_any or attempt == attempts:
-                    raise
-                delay = self._cfg.retry_base_delay * (2 ** (attempt - 1))
-                print(
-                    f"[RAG] LLM stream connect to {url} failed "
-                    f"(attempt {attempt}/{attempts}): {e!r} — retrying in {delay:.1f}s"
-                )
-                await asyncio.sleep(delay)
+    @staticmethod
+    def _ollama_delta(line: str) -> tuple[str, bool]:
+        """Text and end of stream from one line of Ollama's /api/chat."""
+        try:
+            chunk = json.loads(line)
+        except json.JSONDecodeError:
+            return "", False
+        return chunk.get("message", {}).get("content", ""), bool(chunk.get("done"))
 
-    async def _stream_openai_compatible(
-        self,
-        url: str,
-        messages: list,
-        max_tokens: int,
-        api_key: str = "",
-        temperature: float = 0.7,
-    ) -> AsyncGenerator[str, None]:
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        body = {
-            "model": self._cfg.llm_model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "stream": True,
-        }
-        attempts = self._cfg.llm_retries
-        for attempt in range(1, attempts + 1):
-            yielded_any = False
-            try:
-                async with self._llm_client.stream(
-                    "POST", url, headers=headers, json=body
-                ) as resp:
-                    resp.raise_for_status()
-                    async for line in resp.aiter_lines():
-                        if not line or not line.startswith("data:"):
-                            continue
-                        data = line[len("data:") :].strip()
-                        if data == "[DONE]":
-                            return
-                        try:
-                            chunk = json.loads(data)
-                        except json.JSONDecodeError:
-                            continue
-                        delta = (
-                            chunk.get("choices", [{}])[0]
-                            .get("delta", {})
-                            .get("content", "")
-                        )
-                        if delta:
-                            yielded_any = True
-                            yield delta
-                return
-            except _RETRIABLE_EXC as e:
-                if yielded_any or attempt == attempts:
-                    raise
-                delay = self._cfg.retry_base_delay * (2 ** (attempt - 1))
-                print(
-                    f"[RAG] LLM stream connect to {url} failed "
-                    f"(attempt {attempt}/{attempts}): {e!r} — retrying in {delay:.1f}s"
-                )
-                await asyncio.sleep(delay)
+    @staticmethod
+    def _openai_delta(line: str) -> tuple[str, bool]:
+        """Text and end of stream from one server-sent event of
+        /v1/chat/completions."""
+        if not line.startswith("data:"):
+            return "", False
+        data = line[len("data:") :].strip()
+        if data == "[DONE]":
+            return "", True
+        try:
+            chunk = json.loads(data)
+        except json.JSONDecodeError:
+            return "", False
+        return chunk.get("choices", [{}])[0].get("delta", {}).get("content", ""), False
 
     async def _llm_stream(
         self,
@@ -757,6 +856,7 @@ class RAGHandle:
         preferences: dict,
         history: list | None = None,
     ) -> AsyncGenerator[str, None]:
+        cfg = self._cfg
         max_tokens = preferences.get("max_length", 1024)
         temperature = preferences.get("temperature", 0.7)
         messages = [{"role": "system", "content": system_prompt}]
@@ -764,28 +864,55 @@ class RAGHandle:
             messages.extend(history)
         messages.append({"role": "user", "content": user_prompt})
 
-        if self._cfg.llm_provider == "vllm":
-            async for d in self._stream_openai_compatible(
-                f"{self._cfg.llm_url}/v1/chat/completions",
-                messages,
-                max_tokens,
-                temperature=temperature,
-            ):
-                yield d
-        elif self._cfg.llm_provider == "api":
-            async for d in self._stream_openai_compatible(
-                f"{self._cfg.llm_url}/v1/chat/completions",
-                messages,
-                max_tokens,
-                self._cfg.llm_api_key,
-                temperature=temperature,
-            ):
-                yield d
-        elif self._cfg.llm_provider == "ollama":
-            async for d in self._stream_ollama(messages, max_tokens, temperature):
-                yield d
+        headers: dict[str, str] = {}
+        body: dict[str, Any]
+        if cfg.llm_provider == "ollama":
+            url, parse = f"{cfg.llm_url}/api/chat", self._ollama_delta
+            options = {"num_predict": max_tokens, "temperature": temperature}
+            body = {"messages": messages, "options": options}
+        elif cfg.llm_provider in ("vllm", "api"):
+            url, parse = f"{cfg.llm_url}/v1/chat/completions", self._openai_delta
+            body = {
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+            if cfg.llm_provider == "api" and cfg.llm_api_key:
+                headers["Authorization"] = f"Bearer {cfg.llm_api_key}"
         else:
-            raise ValueError(f"Unknown llm_provider: {self._cfg.llm_provider}")
+            raise ValueError(f"Unknown llm_provider: {cfg.llm_provider}")
+        body |= {"model": cfg.llm_model, "stream": True}
+        if preferences.get("json"):  # the reply must be a JSON object
+            if cfg.llm_provider == "ollama":
+                body["format"] = "json"
+            else:
+                body["response_format"] = {"type": "json_object"}
+
+        for attempt in range(1, cfg.llm_retries + 1):
+            yielded_any = False
+            try:
+                async with self._llm_client.stream(
+                    "POST", url, headers=headers, json=body
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        delta, done = parse(line)
+                        if delta:
+                            yielded_any = True
+                            yield delta
+                        if done:
+                            return
+                return
+            except _RETRIABLE_EXC as e:
+                # Once the answer has started, a retry would repeat it.
+                if yielded_any or attempt == cfg.llm_retries:
+                    raise
+                delay = cfg.retry_base_delay * (2 ** (attempt - 1))
+                print(
+                    f"[RAG] LLM stream connect to {url} failed (attempt "
+                    f"{attempt}/{cfg.llm_retries}): {e!r} — retrying in {delay:.1f}s"
+                )
+                await asyncio.sleep(delay)
 
     async def stream(self, query: RAGQuery) -> AsyncGenerator[str, None]:
         """Main streaming entry point — yields LLM text deltas."""
@@ -805,10 +932,12 @@ class RAGHandle:
             raise
 
         print(f"[RAG] Found {len(chunks)} chunks")
-        memories = self._search_memories(query_vector, query._user_id)
+        memories, profile_facts = [], []
+        if query.long_term:
+            memories = self._search_memories(query_vector, query._user_id)
+            profile_facts = self._get_profile(collection, query._user_id)
         if memories:
             print(f"[RAG] Recalled {len(memories)} memory(ies)")
-        profile_facts = self._get_profile(collection, query._user_id)
         if profile_facts:
             print(f"[RAG] Loaded {len(profile_facts)} profile fact(s)")
         if query.emotion:
@@ -824,12 +953,14 @@ class RAGHandle:
             memories,
             query.emotion,
             query.emotion_earlier,
+            working=query.working,
         )
 
         print(
             f"[RAG] Streaming from LLM at {self._cfg.llm_url} "
             f"(provider={self._cfg.llm_provider}, model={self._cfg.llm_model}, "
-            f"history_msgs={len(query.history)})"
+            f"history_msgs={len(query.history)}, "
+            f"working_notes={len(query.working.notes)})"
         )
         try:
             async for delta in self._llm_stream(
@@ -870,6 +1001,7 @@ class RAG(ModuleWithHandle, ModuleWithId):
         persona="",
         temperature=0.7,
         max_history_turns=6,
+        memory: str | Sequence[str] = MEMORIES,
         **kwargs,
     ):
         super().__init__(_handle=_handle, _user_id=_user_id, **kwargs)
@@ -878,8 +1010,19 @@ class RAG(ModuleWithHandle, ModuleWithId):
             f"[RAG] Initialized with user_id={_user_id}, language={language}, "
             f"tone={tone}, response_format={response_format}, "
             f"max_length={max_length}, temperature={temperature}, "
-            f"max_history_turns={max_history_turns}"
+            f"max_history_turns={max_history_turns}, memory={memory}"
         )
+
+        if isinstance(memory, str):
+            memory = [m for m in memory.replace(" ", "").split(",") if m]
+        unknown = set(memory) - set(MEMORIES)
+        if unknown:
+            raise ValueError(
+                f"Unknown memory {sorted(unknown)}: pick among {', '.join(MEMORIES)}"
+            )
+        self._short = "short" in memory
+        self._working = "working" in memory
+        self._long = "long" in memory
 
         self.preferences = {
             "language": language,
@@ -892,8 +1035,18 @@ class RAG(ModuleWithHandle, ModuleWithId):
         if persona:
             self.preferences["persona"] = persona
 
-        self._max_history_turns = max_history_turns
-        self.history: list[dict] = []
+        self._max_history_turns = (
+            max_history_turns if self._short or not self._working else 0
+        )
+        self.history: list[dict] = []  # short-term memory
+        self.working = WorkingMemory()
+        # Turns out of short-term memory but not folded into working memory
+        # yet: still sent verbatim, so no question misses them meanwhile.
+        self._folding: list[dict] = []
+        self._working_lock = asyncio.Lock()
+        # One answer at a time: the bus runs each question in its own task, so
+        # a question asked during an answer waits for it, then knows it.
+        self._answer_lock = asyncio.Lock()
 
     async def process(self, data: RAGQuestion) -> AsyncGenerator[Token, None]:
         """
@@ -903,49 +1056,71 @@ class RAG(ModuleWithHandle, ModuleWithId):
         question_text = data.transcript.text
 
         emotion = data.emotion
-        query = RAGQuery(
-            _user_id=self._user_id if self._user_id else "anonymous",
-            question=question_text,
-            preferences=self.preferences,
-            history=list(self.history),  # snapshot of prior turns
-            emotion=(
-                {"label": emotion.label, "confidence": float(emotion.confidence)}
-                if emotion is not None
-                else None
-            ),
-            emotion_earlier=(
-                bool(data.emotion_earlier) if emotion is not None else False
-            ),
-        )
+        async with self._answer_lock:
+            query = RAGQuery(
+                _user_id=self._user_id if self._user_id else "anonymous",
+                question=question_text,
+                preferences=self.preferences,
+                emotion=(
+                    {"label": emotion.label, "confidence": float(emotion.confidence)}
+                    if emotion is not None
+                    else None
+                ),
+                emotion_earlier=(
+                    bool(data.emotion_earlier) if emotion is not None else False
+                ),
+                # prior turns
+                history=self._folding + (list(self.history) if self._short else []),
+                working=self.working,
+                long_term=self._long,
+            )
 
-        parts: list[str] = []
-        stream = self._handle.options(stream=True).stream.remote(query)
-        async for delta in stream:  # type: ignore[union-attr]
-            parts.append(delta)
-            yield Token(text=delta, end=False)
-        yield Token(text="", end=True)
+            parts: list[str] = []
+            stream = self._handle.options(stream=True).stream.remote(query)
+            async for delta in stream:  # type: ignore[union-attr]
+                parts.append(delta)
+                yield Token(text=delta, end=False)
+            yield Token(text="", end=True)
 
-        self._record_turn(question_text, "".join(parts))
+            evicted = self._record_turn(question_text, "".join(parts))
+            if self._working:
+                self._folding.extend(evicted)
+        # Outside the answer lock: the next question need not wait for it.
+        if evicted and self._working:
+            await self._fold_into_working_memory(evicted)
 
-    def _record_turn(self, question: str, answer: str) -> None:
-        """Append this turn to the session history (raw Q/A, no RAG context)
-        and trim to the most recent `max_history_turns` exchanges."""
+    def _record_turn(self, question: str, answer: str) -> list[dict]:
         answer = answer.strip()
         if not answer:
-            return
+            return []
         self.history.append({"role": "user", "content": question})
         self.history.append({"role": "assistant", "content": answer})
         max_msgs = self._max_history_turns * 2
-        if len(self.history) > max_msgs:
-            del self.history[:-max_msgs]
+        evicted = self.history[: max(len(self.history) - max_msgs, 0)]
+        del self.history[: len(evicted)]
+        return evicted
+
+    async def _fold_into_working_memory(self, turns: list[dict]) -> None:
+        async with self._working_lock:
+            try:
+                self.working = await self._handle.fold_into_working_memory.remote(
+                    self.working, turns
+                )
+            except Exception:
+                print(f"[RAG] working memory update failed:\n{traceback.format_exc()}")
+            self._folding = [m for m in self._folding if all(m is not t for t in turns)]
 
     async def finalize(self) -> None:
-        """Called when the session ends — persist this conversation as a memory."""
-        if not self.history:
+        if not self._long:
             return
-        try:
-            await self._handle.save_conversation.remote(
-                self._user_id or "anonymous", list(self.history)
-            )
-        except Exception:
-            print(f"[RAG] finalize failed:\n{traceback.format_exc()}")
+        async with self._working_lock:
+            # A fold cancelled with the session left its turns in _folding.
+            history = self._folding + self.history
+            if not history and not self.working:
+                return
+            try:
+                await self._handle.save_conversation.remote(
+                    self._user_id or "anonymous", history, self.working
+                )
+            except Exception:
+                print(f"[RAG] finalize failed:\n{traceback.format_exc()}")
