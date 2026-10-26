@@ -2,10 +2,10 @@
 #
 # huri-core is not in this repository: the tests run against the ref pinned as
 # HURI_CORE_REF in versions.env (blocking), and against huri-core's `dev`
-# branch as a canary (non-blocking), so a breaking change in core shows up here
-# before a release. huri-cli is not tested here: it has its own repository and
-# CI (the plan job checks it is planned, and --no-cli; the nightly install.yml
-# installs and imports it).
+# branch as a canary (warnings only), so a breaking change in core shows up
+# here before a release. huri-cli is not tested here: it has its own
+# repository and CI (the plan job checks it is planned, and --no-cli; the
+# nightly install.yml installs and imports it).
 #
 # The expensive "does it actually install" run lives in install.yml, and the
 # GPU paths live in gpu.yml (self-hosted — no hosted runner has a GPU).
@@ -249,12 +249,14 @@ jobs:
     # pinned: HURI_CORE_REF in versions.env, what a release of this
     # repository is tested against — blocking. canary: huri-core's dev branch,
     # non-blocking, to see a breaking core change before it is released. The
-    # canary is red by design between a core minor release (core dev moves to
+    # canary fails by design between a core minor release (core dev moves to
     # the next .dev0, outside the modules' ranges) and the PR that moves this
-    # repository to the next core minor (RELEASING.md, step 5).
+    # repository to the next core minor (RELEASING.md, step 5). So the canary
+    # job stays green: its failing steps carry on, and its last step reports
+    # them as warnings. A red mark on every pull request, for a change that is
+    # not the pull request's, would block its merge.
     name: pytest (huri-core ${{ matrix.name }})
     runs-on: ubuntu-latest
-    continue-on-error: ${{ matrix.canary }}
     strategy:
       fail-fast: false
       matrix:
@@ -285,6 +287,8 @@ jobs:
             torch==2.3.1 torchaudio==2.3.1
           pip install -c constraints.txt -r serve_requirements.txt -r requirements.txt
       - name: install huri-core
+        id: core
+        continue-on-error: ${{ matrix.canary }}
         run: |
           ref="${{ matrix.core_ref }}"
           ref="${ref:-$(. ./versions.env && echo "$HURI_CORE_REF")}"
@@ -292,6 +296,8 @@ jobs:
           pip install -c constraints.txt \
             "huri-core[server,client,dev] @ git+https://github.com/Lucy-Robotics/huri-core.git@$ref"
       - name: install the curated events and modules, and the verified third-party modules
+        id: modules
+        continue-on-error: ${{ matrix.canary }}
         # Registers the modules and events (entry points) — HuRI finds them there.
         # A third-party module brings its own dependencies; the curated ones
         # come from the requirement files above.
@@ -307,18 +313,31 @@ jobs:
           python check_registry.py --install-dirs | while read -r dir; do
             pip install -c constraints.txt -e "$dir"
           done
-      - run: pytest -q
+      - name: a Piper voice, for the tests that speak with the real one
+        run: python -m piper.download_voices --download-dir /tmp/piper en_US-lessac-medium
+      - name: pytest
+        id: pytest
+        continue-on-error: ${{ matrix.canary }}
+        run: pytest -q
+        env:
+          HURI_PIPER_VOICE: /tmp/piper/en_US-lessac-medium.onnx
       - name: the huri-modules metapackage (meta/) builds and its metadata is valid
+        id: metapackage
+        continue-on-error: ${{ matrix.canary }}
         run: |
           pip install -c constraints.txt build twine
           python -m build -o "$RUNNER_TEMP/meta-dist" meta
           twine check --strict "$RUNNER_TEMP"/meta-dist/*
       - name: the registry matches its packages, and their own tests pass
+        id: registry
+        continue-on-error: ${{ matrix.canary }}
         # --strict: every third-party submodule must be checked out, at the
         # commit its tag names in its repository (read with git ls-remote, as
         # the shallow submodule checkout carries no tags).
         run: python check_registry.py --strict --run-tests
       - name: the shipped client configs load through the real loader
+        id: configs
+        continue-on-error: ${{ matrix.canary }}
         # Stricter than the `configs` job: this exercises ClientConfig.from_dict
         # and the sender/hook/module dataclasses, not just YAML syntax.
         run: |
@@ -336,6 +355,8 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
       - name: the module registry builds for representative subsets
+        id: subsets
+        continue-on-error: ${{ matrix.canary }}
         run: |
           for mods in "" "rag" "vad,stt,tag,qag,rag" "vad,stt,tag,qag,rag,emo,eag,tts"; do
             HURI_MODULES="$mods" python -c "
@@ -346,10 +367,11 @@ jobs:
           "
           done
       - name: piper synthesises without an audio device
+        id: piper
+        continue-on-error: ${{ matrix.canary }}
         # The engine that makes HuRI portable is also the one CI can test: it
         # writes samples into an array, it does not open a sound card.
         run: |
-          python -m piper.download_voices --download-dir /tmp/piper en_US-lessac-medium
           python - <<'PY'
           import time
           import numpy as np
@@ -362,3 +384,22 @@ jobs:
           print(f"{dur:.2f}s audio in {time.time()-t0:.2f}s ({rtf:.3f}x realtime)")
           assert rtf < 1.0, f"piper must be faster than realtime, got {rtf:.2f}x"
           PY
+      - name: the canary's failures, as warnings
+        if: ${{ always() && matrix.canary }}
+        env:
+          STEPS: ${{ toJSON(steps) }}
+        run: |
+          failed=$(jq -r 'to_entries[] | select(.value.outcome == "failure") | .key' <<<"$STEPS")
+          if [ -z "$failed" ]; then
+            echo "huri-core dev passes every step" >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### huri-core dev canary: failing steps"
+            echo "Red by design while core dev is outside the modules' huri-core"
+            echo "ranges (RELEASING.md, step 5); otherwise, core dev broke them."
+            for step in $failed; do echo "- $step"; done
+          } >>"$GITHUB_STEP_SUMMARY"
+          for step in $failed; do
+            echo "::warning title=huri-core dev canary::step '$step' fails against huri-core dev, see this job's log"
+          done
