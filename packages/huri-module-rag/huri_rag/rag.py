@@ -42,6 +42,9 @@ _DEFAULT_PERSONA = os.environ.get(
     "speak naturally and with personality, and never break the illusion.",
 )
 
+# Labels of EMO's classifier (huri-module-emo), as the LLM should read them.
+_EMOTION_NAMES = {"neu": "neutral", "hap": "happy", "ang": "angry", "sad": "sad"}
+
 
 class RAGDeploymentConfig(BaseModel):
     qdrant_url: str = "http://localhost:6333"
@@ -78,6 +81,11 @@ class RAGQuery:
     question: str
     preferences: dict = field(default_factory=dict)
     history: list = field(default_factory=list)
+    # How the user sounded, from EMO: {"label", "confidence"}. ``emotion_earlier``
+    # when it is from their previous message (QAG's parallel mode, where the
+    # emotion lands after its question was answered and goes with the next).
+    emotion: dict | None = None
+    emotion_earlier: bool = False
 
 
 @serve.deployment(name="RAGHandle")
@@ -554,6 +562,20 @@ class RAGHandle:
             for point in results
         ]
 
+    @staticmethod
+    def _emotion_hint(emotion: dict, earlier: bool) -> str:
+        name = _EMOTION_NAMES.get(emotion["label"], emotion["label"])
+        sounds = (
+            f"sounded {name} in their previous message"
+            if earlier
+            else f"sounds {name} right now"
+        )
+        return (
+            f"From the tone of their voice, the person {sounds} "
+            f"({emotion['confidence']:.0%} confident). Let it shape how you "
+            "answer; only mention it if that helps."
+        )
+
     def _build_prompt(
         self,
         question: str,
@@ -561,6 +583,8 @@ class RAGHandle:
         preferences: dict,
         profile_facts: list[str] | None = None,
         memories: list[str] | None = None,
+        emotion: dict | None = None,
+        emotion_earlier: bool = False,
     ) -> tuple[str, str]:
         persona = preferences.get("persona", _DEFAULT_PERSONA)
         parts = [persona]
@@ -579,6 +603,8 @@ class RAGHandle:
             parts.append("Format your answer as bullet points.")
         if preferences.get("extra_instructions"):
             parts.append(preferences["extra_instructions"])
+        if emotion:
+            parts.append(self._emotion_hint(emotion, emotion_earlier))
 
         parts.append("Keep your answer to 2-3 sentences maximum. This is a discussion.")
         parts.append(
@@ -785,8 +811,19 @@ class RAGHandle:
         profile_facts = self._get_profile(collection, query._user_id)
         if profile_facts:
             print(f"[RAG] Loaded {len(profile_facts)} profile fact(s)")
+        if query.emotion:
+            print(
+                f"[RAG] Emotion: {query.emotion['label']} "
+                f"({'previous message' if query.emotion_earlier else 'this message'})"
+            )
         system_prompt, user_prompt = self._build_prompt(
-            query.question, chunks, query.preferences, profile_facts, memories
+            query.question,
+            chunks,
+            query.preferences,
+            profile_facts,
+            memories,
+            query.emotion,
+            query.emotion_earlier,
         )
 
         print(
@@ -809,6 +846,10 @@ class RAG(ModuleWithHandle, ModuleWithId):
 
     input:  huri.question (RAGQuestion)
     output: huri.token    (Token)
+
+    The question's emotion, when it has one, tells the LLM how the user
+    sounded: this message's, or the previous one's when QAG's parallel mode
+    sent the question before EMO had finished (``emotion_earlier``).
     """
 
     _handle_cls = RAGHandle
@@ -861,11 +902,20 @@ class RAG(ModuleWithHandle, ModuleWithId):
         """
         question_text = data.transcript.text
 
+        emotion = data.emotion
         query = RAGQuery(
             _user_id=self._user_id if self._user_id else "anonymous",
             question=question_text,
             preferences=self.preferences,
             history=list(self.history),  # snapshot of prior turns
+            emotion=(
+                {"label": emotion.label, "confidence": float(emotion.confidence)}
+                if emotion is not None
+                else None
+            ),
+            emotion_earlier=(
+                bool(data.emotion_earlier) if emotion is not None else False
+            ),
         )
 
         parts: list[str] = []

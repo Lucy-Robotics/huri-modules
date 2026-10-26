@@ -12,6 +12,16 @@ pip install -e 'packages/huri-module-rag[rag]'   # from a huri-modules checkout,
 HURI_MODULES=rag,qag ...   # enable it on the server
 ```
 
+`qag` sends the question on as soon as TAG's sentence is in (`mode: parallel`,
+the default): `rag` answers while `emo` is still reading the turn, and an
+emotion that lands afterwards goes with the next question, flagged
+`emotion_earlier` so the LLM reads it as the previous message's. With
+`mode: sequential` it holds the question until its emotion is in, so the
+answer always knows how this very sentence sounded, at the cost of waiting for
+`emo`. Without `emo`/`eag` in the session, set `use_emotion: false` or the
+question is held for an emotion that never comes. `rag` tells the LLM how the
+user sounded, from the emotion on the question.
+
 `rag` and the ingestion and memory tools (`python -m huri_rag.ingestion`,
 `memory_inspect`, `memory_maintenance`) need the `rag` extra (Qdrant client,
 sentence-transformers, httpx, pypdf, semantic_chunker); `qag` only joins events

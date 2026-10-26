@@ -103,7 +103,7 @@ works on it. Nothing here is aspirational — these are measured outcomes:
 
 | Module                                                     | CPU only                         | NVIDIA       | AMD / ROCm                                |
 | ---------------------------------------------------------- | -------------------------------- | ------------ | ----------------------------------------- |
-| **STT** (faster-whisper)                                   | ✅ `int8`, realtime for `base`   | ✅ `float16` | ✅ `float16`                              |
+| **STT** (faster-whisper)                                   | ✅ `int8`, realtime for `base`   | ✅ `float16` | ⚠️ runs on CPU: the ROCm build garbles transcripts |
 | **TTS — piper** (default without an NVIDIA GPU)            | ✅ **~30x faster than realtime** | ✅           | ✅ (runs on CPU; it does not need a GPU)  |
 | **TTS — cosyvoice** (default on NVIDIA with ≥4.4 GiB free) | ⚠️ ~7x _slower_ than realtime    | ✅ `fp16`    | ❌ vocoder faults in a MIOpen convolution |
 | **RAG / LLM** (Ollama)                                     | ✅ tier picked from free RAM     | ✅           | ✅                                        |
@@ -149,7 +149,7 @@ rejected with a `session_error` naming both sets.
 | [`huri-module-stt`](packages/huri-module-stt) | `stt` | transcribes speech with faster-whisper (CPU or GPU) |
 | [`huri-module-tag`](packages/huri-module-tag) | `tag` | stitches overlapping transcript passes into one sentence |
 | [`huri-module-emo`](packages/huri-module-emo) | `emo`, `eag` | estimates the emotion of speech from its prosody, and aggregates it over an utterance |
-| [`huri-module-rag`](packages/huri-module-rag) | `rag`, `qag` | answers from memory with an LLM, streaming tokens; joins a transcript and its emotion into a question; ingestion and memory tools |
+| [`huri-module-rag`](packages/huri-module-rag) | `rag`, `qag` | answers from memory with an LLM, streaming tokens, told how the user sounded; joins a transcript and its emotion into a question, without waiting for the emotion (`mode: parallel`, the default) or after it (`sequential`); ingestion and memory tools |
 | [`huri-module-mov`](packages/huri-module-mov) | `mov` | SMPL-X co-speech gestures (EMAGE, vendored model code) |
 | [`huri-module-tts`](packages/huri-module-tts) | `tts`, `tts_cosyvoice` | speaks the reply: `tts` is the default engine, Piper (ONNX, any CPU; extra `piper`); `tts_cosyvoice` clones a voice with CosyVoice3 (NVIDIA; extra `cosyvoice`), wired instead of `tts` |
 | [`huri-hub`](packages/huri-hub) | — | `huri hub`: finds and installs modules (a tool, not in the registry; it reads it) |
@@ -624,7 +624,7 @@ name = "servo"                     # its huri.modules entry point name
 summary = "Gesture to servo angle arrays"
 input = { topic = "huri.motion", event = "huri_events.motion:Motion" }
 output = { topic = "acme.servo_angles", event = "huri_events_servo:ServoAngles" }  # omit for a terminal module
-events = ["huri-events>=0.1,<0.2", "huri-events-servo>=0.1,<0.2"]                  # optional
+events = ["huri-events>=0.2,<0.3", "huri-events-servo>=0.1,<0.2"]                  # optional
 requires = { gpu = false, actuation = false }                                      # optional
 huri_core = ">=0.4,<0.5"
 ```

@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "huri-module-rag"
-version = "0.1.0"
+version = "0.2.0"
 description = "HuRI module: Retrieval-augmented answers with long-term memory (Qdrant + an OpenAI-compatible LLM), and the question aggregator"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "huri-core[server]>=0.4,<0.5",
-  "huri-events>=0.1,<0.2",
+  "huri-events>=0.2,<0.3",
 ]
 
 # What `rag` and the ingestion and memory tools (huri_rag.ingestion,

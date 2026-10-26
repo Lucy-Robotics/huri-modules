@@ -6,6 +6,10 @@ Text aggregator: stitches overlapping transcripts into one question.
 |---|---|---|
 | `tag` | `huri.transcript` → `huri.partial_question` | Stitches overlapping transcript passes into one sentence |
 
+The end-of-turn transcript is `stt`'s pass over the whole utterance, so it
+is what `tag` sends; the window transcripts before it are stitched together
+on their overlap only as the fallback for an empty end pass.
+
 ```sh
 pip install -e packages/huri-module-tag     # from a huri-modules checkout, next to huri-core and huri-events
 HURI_MODULES=tag ...   # enable it on the server
