@@ -79,9 +79,11 @@ core minor is under way (see step 5 below). Everything reads it:
 - the Docker images take it as the `HURI_CORE_REF` build arg, defaulting to
   the file (`docker build --build-arg HURI_CORE_REF="$(. ./versions.env && echo "$HURI_CORE_REF")" ...`);
 - CI installs it for the blocking test job, and runs the same tests against
-  huri-core `dev` as a non-blocking canary, so a breaking core change is seen
-  here before core releases it. Once core has released `X.Y.0` and bumped its
-  `dev` to `X.(Y+1).0.dev0`, the canary is **red by design** (core `dev` is
+  huri-core `dev` as a canary, so a breaking core change is seen here before
+  core releases it. The canary job stays green and reports its failing steps
+  as warnings: a failure there is about core, not about the pull request, and
+  must not hold up its merge. Once core has released `X.Y.0` and bumped its
+  `dev` to `X.(Y+1).0.dev0`, the canary **warns by design** (core `dev` is
   outside every module's `>=X.Y,<X.(Y+1)` range) until the pull request of
   step 5 widens the ranges; in that window, read its log for failures other
   than the range checks.
@@ -159,7 +161,7 @@ after the huri-core release they target is tagged:
    `dev` **and** moves every range to `>=X.(Y+1).0.dev0,<X.(Y+2)` (each package
    `pyproject.toml`, each `huri_module.toml` and
    each `registry.toml` entry, in agreement). Until that pull request merges,
-   the `dev canary` CI job is red by design.
+   the `dev canary` CI job warns by design.
 
 A patch release (`0.1.1`) is the same without step 1's range changes: fixes
 only, against the same huri-core minor.
