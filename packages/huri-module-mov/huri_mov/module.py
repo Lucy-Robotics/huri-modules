@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 from typing import AsyncGenerator, Optional
 
 import numpy as np
@@ -17,6 +18,18 @@ _EMAGE_SR = 16000  # EMAGE expects 16 kHz mono audio
 # block in the client config, or globally via the env vars below.
 _CONTEXT_SEC = float(os.environ.get("HURI_GESTURE_CONTEXT_SEC", "2.0"))
 _MIN_CHUNK_SEC = float(os.environ.get("HURI_GESTURE_MIN_CHUNK_SEC", "0.5"))
+# Most fresh audio one window covers. A TTS that sends whole sentences (Piper)
+# would otherwise get no gesture until the sentence's full window is inferred,
+# seconds into its playback; short windows also keep each inference brief
+# when the CPU is shared with the LLM. 0 turns it off.
+_MAX_CHUNK_SEC = float(os.environ.get("HURI_GESTURE_MAX_CHUNK_SEC", "1.0"))
+# When the gestures fall this far behind the voice being heard (inference
+# slower than realtime, e.g. while the LLM shares the CPU), skip ahead to
+# where the voice is: gestures for words already spoken are never shown.
+# 0 turns it off.
+_MAX_BEHIND_SEC = float(os.environ.get("HURI_GESTURE_MAX_BEHIND_SEC", "1.0"))
+# How far past the voice a window starts after a skip, for its inference.
+_SKIP_LEAD_SEC = 0.5
 
 # Seconds over which a fresh window's first frames are eased onto the last
 # emitted pose, killing the seam snap between windows and between utterances.
@@ -272,6 +285,11 @@ class MOV(ModuleWithHandle):
     ``context_sec + chunk size`` so inference cost stays flat regardless of
     utterance length.
 
+    Long audio chunks (a TTS sending whole sentences) are inferred in windows
+    of at most ``max_chunk_sec`` of fresh audio, emitted one by one: the first
+    gestures arrive while the sentence starts playing, the next ones while it
+    plays.
+
     Seam blending
     ─────────────
     Priming with context keeps the *audio* continuous across a window, but the
@@ -293,6 +311,8 @@ class MOV(ModuleWithHandle):
     :device:       PyTorch device string; defaults to CUDA when available.
     :context_sec:  Seconds of prior audio prepended to each window for continuity.
     :min_chunk_sec: Minimum seconds of fresh audio to accumulate before inferring.
+    :max_chunk_sec: Most fresh audio in one window (0: no limit).
+    :max_behind_sec: Skip ahead when this far behind the voice (0: never).
     :blend_sec:    Seconds over which each window's seam is eased onto the prior frame.
     """
 
@@ -308,8 +328,17 @@ class MOV(ModuleWithHandle):
         context_sec: float = _CONTEXT_SEC,
         min_chunk_sec: float = _MIN_CHUNK_SEC,
         blend_sec: float = _BLEND_SEC,
+        max_chunk_sec: float = _MAX_CHUNK_SEC,
+        max_behind_sec: float = _MAX_BEHIND_SEC,
     ):
         super().__init__(_handle)
+        self._max_behind_sec = float(max_behind_sec)
+        # When each audio chunk of the utterance is heard, as a player that
+        # starts a chunk on arrival or right after the previous one would:
+        # (pts, wall time it starts playing), and when the last one ends.
+        self._heard: list = []
+        self._heard_end = 0.0
+        self._max_chunk_sec = float(max_chunk_sec)
         self._context_sec = float(context_sec)
         self._min_chunk_sec = float(min_chunk_sec)
         self._blend_sec = float(blend_sec)
@@ -340,6 +369,36 @@ class MOV(ModuleWithHandle):
         self._buffer = np.empty(0, dtype=np.float32)
         self._buf_start = 0
         self._emitted = 0
+        self._heard = []
+        self._heard_end = 0.0
+
+    _clock = staticmethod(time.monotonic)
+
+    def _hear(self, audio: Audio) -> None:
+        """Note when this audio chunk will be heard."""
+        now = self._clock()
+        start = max(now, self._heard_end)
+        self._heard.append((audio.pts, start))
+        self._heard_end = start + audio.data.size / audio.sample_rate
+
+    def _heard_pts(self) -> Optional[float]:
+        """The utterance time being heard now."""
+        now = self._clock()
+        playing = [(pts, at) for pts, at in self._heard if at <= now]
+        if not playing:
+            return None
+        pts, at = playing[-1]
+        return pts + min(now, self._heard_end) - at
+
+    def _skip_behind(self, sr: int, global_end: int, min_new_samples: int) -> None:
+        """Jump past audio already heard when the gestures fell behind it."""
+        heard = self._heard_pts()
+        if self._max_behind_sec <= 0 or heard is None:
+            return
+        if self._emitted / sr >= heard - self._max_behind_sec:
+            return
+        target = int((heard + _SKIP_LEAD_SEC) * sr)
+        self._emitted = max(self._emitted, min(target, global_end - min_new_samples))
 
     async def process(self, audio: Audio) -> AsyncGenerator[Motion, None]:
         # Each chunk arrives as its own process() task on the shared per-session
@@ -348,6 +407,7 @@ class MOV(ModuleWithHandle):
             if audio.data.size > 0:
                 if self._sr is None:
                     self._sr = audio.sample_rate
+                self._hear(audio)
                 self._buffer = np.concatenate(
                     [self._buffer, audio.data.astype(np.float32)]
                 )
@@ -363,21 +423,31 @@ class MOV(ModuleWithHandle):
 
             ctx_samples = int(self._context_sec * sr)
             min_new_samples = int(self._min_chunk_sec * sr)
+            max_samples = int(self._max_chunk_sec * sr)
 
-            global_end = self._buf_start + len(self._buffer)
-            new_samples = global_end - self._emitted
+            while True:
+                global_end = self._buf_start + len(self._buffer)
+                new_samples = global_end - self._emitted
 
-            # Wait for more audio unless this is the final flush of the utterance.
-            if new_samples <= 0 or (
-                not end_of_utterance and new_samples < min_new_samples
-            ):
-                if end_of_utterance:
-                    self._end_utterance()
-                return
+                # Wait for more audio unless this is the final flush.
+                if new_samples <= 0 or (
+                    not end_of_utterance and new_samples < min_new_samples
+                ):
+                    break
 
-            motion = await self._infer_window(sr, ctx_samples, global_end)
-            if motion is not None:
-                yield motion
+                self._skip_behind(sr, global_end, min_new_samples)
+                end = global_end
+                if max_samples > 0:
+                    end = min(end, self._emitted + max_samples)
+                    if global_end - end < min_new_samples:
+                        end = global_end  # no sliver left for a window of its own
+
+                emitted = self._emitted
+                motion = await self._infer_window(sr, ctx_samples, end)
+                if motion is not None:
+                    yield motion
+                if self._emitted <= emitted:
+                    break  # EMAGE turned no new audio into motion: wait for more
 
             if end_of_utterance:
                 self._end_utterance()
@@ -385,9 +455,12 @@ class MOV(ModuleWithHandle):
     async def _infer_window(
         self, sr: int, ctx_samples: int, global_end: int
     ) -> Optional[Motion]:
-        # Window = [context of already-emitted audio] + [fresh audio].
+        # Window = [context of already-emitted audio] + [fresh audio up to
+        # global_end, the window's end].
         win_start = max(self._buf_start, self._emitted - ctx_samples)
-        window = self._buffer[win_start - self._buf_start :]
+        window = self._buffer[
+            win_start - self._buf_start : global_end - self._buf_start
+        ]
         if window.size == 0:
             return None
 
