@@ -19,8 +19,6 @@
 name: CI
 
 on:
-  # Every branch, so a commit is checked before a pull request exists. Tags
-  # are not branches: pushing a release tag does not run it again.
   push:
     branches: ["**"]
   pull_request:
@@ -407,9 +405,6 @@ jobs:
           done
 
   build:
-    # The tests install every package editable (-e), which proves neither that
-    # its sdist and wheel build nor that the wheel ships its manifests: what
-    # `pip install` from git or `huri hub install` gets.
     name: sdist + wheel of every package
     runs-on: ubuntu-latest
     steps:
