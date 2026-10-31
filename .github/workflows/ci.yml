@@ -19,8 +19,10 @@
 name: CI
 
 on:
+  # Every branch, so a commit is checked before a pull request exists. Tags
+  # are not branches: pushing a release tag does not run it again.
   push:
-    branches: [main, dev]
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
 
@@ -403,3 +405,41 @@ jobs:
           for step in $failed; do
             echo "::warning title=huri-core dev canary::step '$step' fails against huri-core dev, see this job's log"
           done
+
+  build:
+    # The tests install every package editable (-e), which proves neither that
+    # its sdist and wheel build nor that the wheel ships its manifests: what
+    # `pip install` from git or `huri hub install` gets.
+    name: sdist + wheel of every package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -c constraints.txt build twine
+      - name: build each package under packages/
+        run: |
+          for pkg in packages/*/; do
+            python -m build -o "$RUNNER_TEMP/dist/$(basename "$pkg")" "$pkg"
+          done
+      - run: twine check --strict "$RUNNER_TEMP"/dist/*/*
+      - name: every module's wheel carries its huri_module.toml
+        run: |
+          python - "$RUNNER_TEMP/dist" <<'PY'
+          import sys, zipfile
+          from pathlib import Path
+          dist, missing = Path(sys.argv[1]), []
+          for pkg in sorted(Path("packages").iterdir()):
+              (wheel,) = (dist / pkg.name).glob("*.whl")
+              names = set(zipfile.ZipFile(wheel).namelist())
+              for manifest in pkg.rglob("huri_module.toml"):
+                  if "tests" in manifest.parts:
+                      continue
+                  path = manifest.relative_to(pkg).as_posix()
+                  print(f"{wheel.name}: {path}")
+                  if path not in names:
+                      missing.append(f"{wheel.name} lacks {path}")
+          sys.exit("\n".join(missing) or None)
+          PY
