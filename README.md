@@ -92,7 +92,7 @@ uv python install 3.12        # or: yay -S python312, or pyenv
 ./install.sh --python "$(uv python find 3.12)"
 ```
 
-Everything else (a C toolchain, `ffmpeg`, `libsndfile`, `portaudio`, and the
+Everything else (a C toolchain, `zstd`, `ffmpeg`, `libsndfile`, `portaudio`, and the
 ROCm runtime on AMD) is installed for you by the `system` stage. Ollama and
 Qdrant are installed and started too unless you point at remote ones.
 
