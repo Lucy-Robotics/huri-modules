@@ -486,6 +486,25 @@ tts_deployment() { if [[ "$TTS_ENGINE" == "cosyvoice" ]]; then echo CosyVoiceTTS
 cosyvoice_planned() {
   if [[ "$P_TTS_DEV" != "off" && "$TTS_ENGINE" == "cosyvoice" ]]; then echo 1; else echo 0; fi
 }
+# What each module needs in the same session: the module producing its input
+# and the one using its output. rag, tts and mov answer the client directly.
+# A set missing one is accepted by the server but never answers (STT's
+# sentences without TAG go nowhere), so the installer refuses it.
+declare -A MODULE_NEEDS=(
+  [vad]="stt" [stt]="vad tag" [tag]="stt qag" [emo]="vad eag" [eag]="emo qag"
+  [qag]="tag rag" [rag]="" [tts]="rag" [mov]="tts"
+)
+module_set_problems() { # "a,b,c" -> one line per missing module, none if it answers
+  local set=",$1," m need
+  local -a mods
+  IFS=',' read -r -a mods <<<"$1"
+  (( ${#mods[@]} )) || { echo "  no module: rag is the one that answers"; return; }
+  for m in "${mods[@]}"; do
+    for need in ${MODULE_NEEDS[$m]}; do
+      [[ "$set" == *",$need,"* ]] || echo "  $m needs $need"
+    done
+  done
+}
 served_modules() { # P_MODULES with the engine's TTS module name
   local m out=() mods
   IFS=',' read -r -a mods <<<"$P_MODULES"
@@ -1068,11 +1087,15 @@ plan() {
 
   # --- STT (faster-whisper) --------------------------------------------------
   # CPU int8 is genuinely realtime for base/small, so STT only takes GPU when
-  # there is room left over. On ROCm it is the one component that *is* supported.
+  # there is room left over. Not on ROCm by default: on an RX 7700S (gfx1102)
+  # the CTranslate2 ROCm build returned a different transcript for the same
+  # audio from one call to the next (float16: 0/8 right, int8: 2/8; empty or
+  # garbage text, and the replica died under two concurrent calls), while CPU
+  # int8 got 8/8, faster. --stt-device gpu still puts it there.
   local stt_cost="${VRAM_STT[$STT_SIZE]}"
-  if [[ "$GPU_VENDOR" == "amd" ]] && (( pool >= stt_cost )); then
-    P_STT_DEV="gpu"; P_STT_VRAM=$stt_cost; pool=$(( pool - stt_cost ))
-    P_STT_WHY="CTranslate2 ROCm build"
+  if [[ "$GPU_VENDOR" == "amd" ]]; then
+    P_STT_DEV="cpu"
+    P_STT_WHY="int8 on $CPU_CORES cores — CTranslate2's ROCm build garbles transcripts (--stt-device gpu to try it)"
   elif [[ "$GPU_VENDOR" == "nvidia" ]] && (( pool >= stt_cost )); then
     P_STT_DEV="gpu"; P_STT_VRAM=$stt_cost; pool=$(( pool - stt_cost ))
     P_STT_WHY="spare VRAM after TTS/LLM/gesture"
@@ -1125,6 +1148,22 @@ plan() {
     done
     (( ${#bad[@]} )) && die "--modules lists unknown module(s): ${bad[*]}. Known: $known"
     P_MODULES="$(IFS=,; echo "${wanted[*]// /}")"
+    P_MODULES="$(echo "$P_MODULES" | tr -s ',' | sed 's/^,//; s/,$//')"
+    local problems
+    problems="$(module_set_problems "$P_MODULES")"
+    [[ -n "$problems" ]] && die "--modules $P_MODULES cannot answer:
+$problems
+e.g. --modules rag (text), vad,stt,tag,qag,rag (voice), add emo,eag for the
+emotion and tts (then mov) to hear the answer"
+    # A module the plan turned off for this machine has no deployment and no
+    # model: listing it is not enough, its --force-* flag keeps it.
+    for m in tts:TTS:tts emo:EMO:emo mov:GES:gesture; do
+      local name="${m%%:*}" dev flag="${m##*:}" why
+      m="${m#*:}"; dev="P_${m%%:*}_DEV"; why="P_${m%%:*}_WHY"
+      if [[ ",$P_MODULES," == *",$name,"* && "${!dev}" == "off" ]]; then
+        die "--modules lists $name, but the plan turned it off on this machine (${!why}): add --force-$flag to keep it"
+      fi
+    done
     # Keep the device plan consistent with the explicit list, so the budgets and
     # the generated deployments match what was asked for.
     if [[ ",$P_MODULES," != *",tts,"* && "$P_TTS_DEV" != "off" ]]; then
@@ -1797,7 +1836,10 @@ install_ct2_rocm() {
     # `pip install <wheel>` reports "Requirement already satisfied" and silently
     # keeps whichever build is there. That is how STT ended up running the CPU
     # wheel while the log said "CTranslate2 (ROCm wheel)". --no-deps because its
-    # dependencies are already pinned by the files installed above.
+    # dependencies are pinned by the files installed after it — except numpy
+    # and pyyaml, which `import ctranslate2` needs for the probe below, and
+    # which nothing installed before this step (torch) pulls in.
+    run "$PIP" install "${C[@]}" "$(pin_of numpy requirements.txt)" pyyaml
     run "$PIP" install "${C[@]}" --force-reinstall --no-deps "$whl"
     # Fail here, with the loader error in hand, rather than at the first
     # utterance inside a Serve replica.
@@ -2064,6 +2106,115 @@ install_services() {
 # 7. Stage: generated configuration + run scripts
 # =============================================================================
 
+# The client config matching the plan: only the modules in P_MODULES, which
+# are the ones the server enables (HURI_MODULES), and only the topics they
+# consume (send) and emit (subscribe). The server refuses a session that names
+# a module it does not run or subscribes to a topic nobody emits.
+client_config() {
+  local planned=",$P_MODULES,"
+  in_plan() { [[ "$planned" == *",$1,"* ]]; }
+  echo "# Client config generated by scripts/install_local.sh — modules match"
+  echo "# HURI_MODULES in config/huri_local.generated.yaml ($(served_modules))."
+  echo "huri_url: ws://localhost:8000/session"
+  echo
+  echo "# Topics this client publishes, and the ones it receives."
+  # The microphone feeds VAD; a typed question goes straight to RAG.
+  local send=() subscribe=()
+  in_plan vad && send+=(huri.audio.in)
+  in_plan rag && send+=(huri.question)
+  echo "send: [$(IFS=,; echo "${send[*]}" | sed 's/,/, /g')]"
+  # huri.question is what the server understood, printed by huri-cli as "<< ...".
+  in_plan qag && subscribe+=(huri.question)
+  in_plan rag && subscribe+=(huri.token)
+  in_plan tts && subscribe+=(huri.audio.out)
+  in_plan mov && subscribe+=(huri.motion)
+  echo "subscribe: [$(IFS=,; echo "${subscribe[*]}" | sed 's/,/, /g')]"
+  echo
+  echo "# Device settings of the CLI client; the server never reads them."
+  echo "cli:"
+  echo "  audio_in:"
+  echo "    sample_rate: 16000"
+  echo "    frame_duration: 0.030"
+  if in_plan tts; then
+    echo "  audio_out:"
+    echo "    incoming_sample_rate: \${cli.audio_in.sample_rate}"
+    echo "    sample_rate: 44100"
+    echo "    save_audio_dir: \"\""
+  fi
+  echo
+  echo "modules:"
+  if in_plan vad; then
+    echo "  vad:"
+    echo "    name: vad"
+    echo "    args:"
+    echo "      vad_agressiveness: 3"
+    echo "      silence_duration: 1.5"
+    echo "      block_duration: \${cli.audio_in.frame_duration}"
+    echo "    logging: INFO"
+  fi
+  if in_plan stt; then
+    echo "  stt:"
+    echo "    name: stt"
+    echo "    args:"
+    echo "      language: en"
+    echo "      block_duration: \${cli.audio_in.frame_duration}"
+    echo "    logging: INFO"
+  fi
+  if in_plan tag; then
+    echo "  tag:"
+    echo "    name: tag"
+    echo "    args:"
+    echo "      min_prefix: 3"
+    echo "    logging: INFO"
+  fi
+  if in_plan emo; then
+    echo "  emo:"
+    echo "    name: emo"
+    echo "    args:"
+    echo "      block_duration: \${cli.audio_in.frame_duration}"
+  fi
+  if in_plan eag; then
+    echo "  eag:"
+    echo "    name: eag"
+  fi
+  if in_plan qag; then
+    echo "  qag:"
+    echo "    name: qag"
+    echo "    args:"
+    # Without emo/eag nothing ever publishes an emotion: QAG must not wait for one.
+    if in_plan eag; then
+      echo "      use_emotion: true"
+    else
+      echo "      use_emotion: false"
+    fi
+  fi
+  if in_plan rag; then
+    echo "  rag:"
+    echo "    name: rag"
+    echo "    args:"
+    echo "      language: en"
+    echo "      tone: formal"
+    echo "      response_format: paragraph"
+    echo "      max_length: 1024"
+    echo "    logging: INFO"
+  fi
+  if in_plan tts; then
+    echo "  $(tts_module):"
+    echo "    name: $(tts_module)"
+    # No args: TTS.__init__ takes only the deployment handle, and modules
+    # are built with **cfg.args — so any key here is a hard TypeError at
+    # session start. The old `min_clause_chars: 20` is a leftover from a design
+    # where HuRI buffered clauses itself; CosyVoice's frontend now does the
+    # segmentation (see the TTS docstring) and nothing reads that key.
+    echo "    logging: INFO"
+  fi
+  if in_plan mov; then
+    echo "  mov:"
+    echo "    name: mov"
+    echo "    logging: INFO"
+  fi
+}
+
 generate_configs() {
   stage_enabled config || return 0
   step "Configuration"
@@ -2297,92 +2448,7 @@ EOF
 
   # --- Matching client config -------------------------------------------------
   local client_cfg="$REPO_ROOT/config/client_local.generated.yaml"
-  {
-    echo "# Client config generated by scripts/install_local.sh — modules match"
-    echo "# HURI_MODULES in config/huri_local.generated.yaml ($(served_modules))."
-    echo "huri_url: ws://localhost:8000/session"
-    echo
-    echo "# Topics this client publishes, and the ones it receives."
-    echo "send: [huri.audio.in, huri.question]"
-    local subscribe="huri.token"
-    [[ "$P_TTS_DEV" != "off" ]] && subscribe+=", huri.audio.out"
-    [[ "$P_GES_DEV" != "off" ]] && subscribe+=", huri.motion"
-    echo "subscribe: [$subscribe]"
-    echo
-    echo "# Device settings of the CLI client; the server never reads them."
-    echo "cli:"
-    echo "  audio_in:"
-    echo "    sample_rate: 16000"
-    echo "    frame_duration: 0.030"
-    if [[ "$P_TTS_DEV" != "off" ]]; then
-      echo "  audio_out:"
-      echo "    incoming_sample_rate: \${cli.audio_in.sample_rate}"
-      echo "    sample_rate: 44100"
-      echo "    save_audio_dir: \"\""
-    fi
-    echo
-    echo "modules:"
-    echo "  vad:"
-    echo "    name: vad"
-    echo "    args:"
-    echo "      vad_agressiveness: 3"
-    echo "      silence_duration: 1.5"
-    echo "      block_duration: \${cli.audio_in.frame_duration}"
-    echo "    logging: INFO"
-    echo "  stt:"
-    echo "    name: stt"
-    echo "    args:"
-    echo "      language: en"
-    echo "      block_duration: \${cli.audio_in.frame_duration}"
-    echo "    logging: INFO"
-    echo "  tag:"
-    echo "    name: tag"
-    echo "    args:"
-    echo "      min_prefix: 3"
-    echo "    logging: INFO"
-    if [[ "$P_EMO_DEV" != "off" ]]; then
-      echo "  emo:"
-      echo "    name: emo"
-      echo "    args:"
-      echo "      block_duration: \${cli.audio_in.frame_duration}"
-      echo "  eag:"
-      echo "    name: eag"
-    fi
-    echo "  qag:"
-    echo "    name: qag"
-    echo "    args:"
-    # QAG defaults to use_emotion=True and then holds every question until an
-    # `emotion` event arrives. With emo/eag pruned from the plan nothing ever
-    # publishes one, so the pipeline stalls inside QAG — no error, no answer.
-    if [[ "$P_EMO_DEV" != "off" ]]; then
-      echo "      use_emotion: true"
-    else
-      echo "      use_emotion: false"
-    fi
-    echo "  rag:"
-    echo "    name: rag"
-    echo "    args:"
-    echo "      language: en"
-    echo "      tone: formal"
-    echo "      response_format: paragraph"
-    echo "      max_length: 1024"
-    echo "    logging: INFO"
-    if [[ "$P_TTS_DEV" != "off" ]]; then
-      echo "  $(tts_module):"
-      echo "    name: $(tts_module)"
-      # No args: TTS.__init__ takes only the deployment handle, and modules
-      # are built with **cfg.args — so any key here is a hard TypeError at
-      # session start. The old `min_clause_chars: 20` is a leftover from a design
-      # where HuRI buffered clauses itself; CosyVoice's frontend now does the
-      # segmentation (see the TTS docstring) and nothing reads that key.
-      echo "    logging: INFO"
-    fi
-    if [[ "$P_GES_DEV" != "off" ]]; then
-      echo "  mov:"
-      echo "    name: mov"
-      echo "    logging: INFO"
-    fi
-  } | write_file "$client_cfg"
+  client_config | write_file "$client_cfg"
   ok "client config → config/client_local.generated.yaml"
 
   write_secrets

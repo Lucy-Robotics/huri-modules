@@ -9,28 +9,23 @@ import argparse
 from datetime import datetime, timedelta
 
 try:
+    from .memory_maintenance import (
+        CONSOLIDATE_BELOW,
+        DELETE_BELOW,
+        MARKER_TYPE,
+        scroll_all,
+        strength,
+    )
     from .qdrant_utils import make_qdrant_client
 except ImportError:
+    from memory_maintenance import (  # type: ignore[no-redef]
+        CONSOLIDATE_BELOW,
+        DELETE_BELOW,
+        MARKER_TYPE,
+        scroll_all,
+        strength,
+    )
     from qdrant_utils import make_qdrant_client  # type: ignore[no-redef]
-
-HALF_LIFE_DAYS = 5.0
-DELETE_BELOW, CONSOLIDATE_BELOW = 0.05, 0.30
-
-
-def strength(payload: dict, at: datetime | None = None) -> float:
-    """Query-independent strength: recency * importance (matches maintenance)."""
-    at = at or datetime.now()
-    imp: int = payload.get("importance", 3)
-    half = max(HALF_LIFE_DAYS * (imp / 5.0), 0.5)
-    try:
-        last = datetime.fromisoformat(
-            payload.get("last_accessed") or payload["created_at"]
-        )
-        age = (at - last).total_seconds() / 86400.0
-    except Exception:
-        age = 0.0
-    recency: float = 0.5 ** (max(age, 0) / half)
-    return recency * (imp / 10.0)
 
 
 def fate(s: float) -> str:
@@ -49,29 +44,18 @@ def main():
     args = ap.parse_args()
 
     qdrant = make_qdrant_client(args.qdrant_url)
-    points, offset = [], None
-    while True:
-        batch, offset = qdrant.scroll(
-            collection_name=args.collection,
-            limit=200,
-            offset=offset,
-            with_payload=True,
-            with_vectors=False,
-        )
-        points.extend(batch)
-        if offset is None:
-            break
+    points = scroll_all(qdrant, args.collection)
 
     now = datetime.now()
     rows = []
     for p in points:
         pl = p.payload or {}
-        if pl.get("type") == "maintenance_marker":
+        if pl.get("type") == MARKER_TYPE:
             print(f"[marker] last maintenance run: {pl.get('last_run')}\n")
             continue
         if args.user_id and pl.get("_user_id") != args.user_id:
             continue
-        s_now = strength(pl, now)
+        s_now = strength(pl, at=now)
         rows.append(
             {
                 "text": pl.get("text", "")[:60].replace("\n", " "),
@@ -89,8 +73,8 @@ def main():
                     1,
                 ),
                 "now": round(s_now, 3),
-                "+5d": round(strength(pl, now + timedelta(days=5)), 3),
-                "+15d": round(strength(pl, now + timedelta(days=15)), 3),
+                "+5d": round(strength(pl, at=now + timedelta(days=5)), 3),
+                "+15d": round(strength(pl, at=now + timedelta(days=15)), 3),
                 "fate": fate(s_now),
             }
         )
