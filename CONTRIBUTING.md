@@ -14,9 +14,16 @@ specific to huri-modules.
 - **One package, one version**: bump the `version` in the `pyproject.toml` of
   each package under `packages/` that you change. A change to the wire format
   of `huri-events` is a minor bump while `0.x`.
-- **A new module** lives in its own repository, made from
-  [huri-plugin-template](https://github.com/Lucy-Robotics/huri-plugin-template).
-  Listing it in `registry.toml` follows [ACCEPTANCE.md](ACCEPTANCE.md).
+- **A curated (official) module**, new or existing, is a package under
+  `packages/` (`packages/huri-module-<name>`), with its `registry.toml` entry
+  ([ACCEPTANCE.md](ACCEPTANCE.md)). A new one starts with an issue labelled
+  `discussion`: the maintainers decide which modules join the curated set.
+- **Your own module** does not come here: it lives in your own repository,
+  made from
+  [huri-plugin-template](https://github.com/Lucy-Robotics/huri-plugin-template)
+  (GPL-3.0, like huri-core, so a module you distribute is GPL-3.0 too).
+  Listing it as verified in `registry.toml` (a submodule under `modules/<name>`)
+  follows [ACCEPTANCE.md](ACCEPTANCE.md).
 - **The huri-core and huri-cli versions** this checkout is tested with are in
   [`versions.env`](versions.env); [RELEASING.md](RELEASING.md) says when they
   move.
