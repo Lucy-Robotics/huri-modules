@@ -1393,11 +1393,11 @@ SYS_PKGS=()
 compute_system_packages() {
   SYS_PKGS=()
   case "$PKG_MGR" in
-    apt)    SYS_PKGS=(build-essential git curl ca-certificates pkg-config unzip
+    apt)    SYS_PKGS=(build-essential git curl ca-certificates pkg-config unzip zstd
                   ffmpeg libsndfile1 libportaudio2 python3-dev) ;;
-    dnf)    SYS_PKGS=(gcc gcc-c++ make git curl unzip ffmpeg-free libsndfile portaudio python3-devel) ;;
-    pacman) SYS_PKGS=(base-devel git curl unzip ffmpeg libsndfile portaudio) ;;
-    zypper) SYS_PKGS=(gcc gcc-c++ make git curl unzip ffmpeg libsndfile1 portaudio python3-devel) ;;
+    dnf)    SYS_PKGS=(gcc gcc-c++ make git curl unzip zstd ffmpeg-free libsndfile portaudio python3-devel) ;;
+    pacman) SYS_PKGS=(base-devel git curl unzip zstd ffmpeg libsndfile portaudio) ;;
+    zypper) SYS_PKGS=(gcc gcc-c++ make git curl unzip zstd ffmpeg libsndfile1 portaudio python3-devel) ;;
     *)      return 0 ;;
   esac
 

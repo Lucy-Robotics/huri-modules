@@ -410,3 +410,9 @@ def test_an_unreachable_ref_fails_before_anything_is_installed(tmp_path):
     assert "ls-remote" in log.read_text()
     assert not changes.exists(), changes.read_text()
     assert not (repo / ".venv").exists()
+
+
+def test_every_package_manager_installs_zstd_for_ollama():
+    lists = re.findall(r"SYS_PKGS=\(([^)]+)\)", INSTALLER.read_text())
+    assert len(lists) == 4
+    assert all("zstd" in packages.split() for packages in lists)
