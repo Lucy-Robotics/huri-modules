@@ -18,7 +18,7 @@ def test_a_real_streaming_module_runs_on_a_fake_deployment():
             for delta in ("Hello", " ", query.question):
                 yield delta
 
-        async def save_conversation(self, user_id, history):
+        async def save_conversation(self, user_id, history, working=None):
             self.saved = (user_id, history)
 
     fake = FakeRAGHandle()
