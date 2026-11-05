@@ -203,6 +203,7 @@ The installer, the Docker images and CI all read that one file
 | huri-modules | huri-core |
 |---|---|
 | 0.1.x | 0.4.x |
+| 0.2.x | 0.4.x |
 
 CI tests every change against the pinned core (blocking) and against
 huri-core's `dev` branch (non-blocking), so a breaking core change shows up
@@ -504,7 +505,7 @@ pip install "huri-core[server] @ $CORE" \
 From git, give huri-core, huri-events and huri-cli as git URLs on the same
 command line as what depends on them, so pip takes them from git and not from
 an index. Use release tags, a huri-core `0.4.x` with a
-huri-modules `0.1.x` (see [Versions](#versions-and-compatibility)); without a
+huri-modules `0.2.x` (see [Versions](#versions-and-compatibility)); without a
 ref pip takes the repository's default branch. `[server]` is Ray Serve + FastAPI and the pins that
 keep them working; each module package declares its own dependencies, and the
 GPU ones ship `requirements-<variant>[.<module>].txt` pins next to it.
