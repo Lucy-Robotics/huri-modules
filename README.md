@@ -1,5 +1,7 @@
 # huri-modules
 
+[![CI](https://github.com/Lucy-Robotics/huri-modules/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucy-Robotics/huri-modules/actions/workflows/ci.yml)
+
 The one repository to clone to try or deploy [HuRI](https://github.com/Lucy-Robotics/huri-core#huri-ecosystem),
 the open-source conversational pipeline for humanoid robots and virtual avatars:
 speech to text, retrieval-augmented answers from an LLM, emotion, speech
@@ -206,7 +208,10 @@ CI tests every change against the pinned core (blocking) and against
 huri-core's `dev` branch (non-blocking), so a breaking core change shows up
 before it is released (that canary is red by design between a core minor
 release and the change that moves the modules to the next minor). [RELEASING.md](RELEASING.md) has the policy and the
-release checklist.
+release checklist. CI runs on every push, to any branch, and on every pull
+request; it also builds the sdist and wheel of every package under
+`packages/` and checks that each module's wheel carries its
+`huri_module.toml`.
 
 To develop huri-core and the modules together, point the installer at a local
 checkout instead of the git ref: `HURI_CORE_PATH=../huri-core ./install.sh`
