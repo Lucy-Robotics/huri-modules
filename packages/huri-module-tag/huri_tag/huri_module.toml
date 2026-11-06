@@ -2,6 +2,6 @@ name = "tag"
 summary = "Stitches overlapping transcript passes into one sentence"
 input = { topic = "huri.transcript", event = "huri_events.speech:Transcript" }
 output = { topic = "huri.partial_question", event = "huri_events.question:PartialQuestion" }
-events = ["huri-events>=0.1,<0.2"]
+events = ["huri-events>=0.1,<0.3"]
 requires = { gpu = false, actuation = false }
 huri_core = ">=0.4,<0.5"

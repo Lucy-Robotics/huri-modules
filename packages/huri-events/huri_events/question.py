@@ -20,12 +20,19 @@ class PartialQuestion(JsonEvent):
 class RAGQuestion(JsonEvent):
     """Fully aggregated question to send to the RAG.
 
-    Wire: JSON ``{"transcript": {"text", "end"}, "emotion": {...} | null}``,
-    or the shorthand ``{"text": str}`` a client sends for a typed question.
+    Wire: JSON ``{"transcript": {"text", "end"}, "emotion": {...} | null,
+    "emotion_earlier": bool}``, or the shorthand ``{"text": str}`` a client
+    sends for a typed question.
+
+    `emotion_earlier` comes from QAG's parallel mode: the question left before
+    EMO had finished reading the turn, so the emotion attached is the one of
+    the user's previous message, kept for this one. False when the emotion is
+    this question's own, or when there is none.
     """
 
     transcript: Transcript
     emotion: Optional[Emotion] = None
+    emotion_earlier: bool = False
 
     @classmethod
     def from_wire(cls, data: Mapping[str, Any]) -> "RAGQuestion":
@@ -55,4 +62,4 @@ class RAGQuestion(JsonEvent):
         emotion = data.get("emotion")
         if isinstance(emotion, Mapping):
             emotion = Emotion(**emotion)
-        return cls(transcript, emotion)
+        return cls(transcript, emotion, bool(data.get("emotion_earlier", False)))

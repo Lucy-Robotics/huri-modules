@@ -5,14 +5,16 @@
 | huri.audio.in           | BytesEvent (core) | binary |
 | huri.voice              | Voice             | json   |
 | huri.transcript         | Transcript        | json   |
-| huri.emotion            | Emotion           | -      |
+| huri.emotion            | Emotion           | json   |
 | huri.partial_question   | PartialQuestion   | json   |
 | huri.question           | RAGQuestion       | json   |
 | huri.token              | Token             | json   |
 | huri.audio.out          | Audio             | binary |
 | huri.motion             | Motion            | binary |
 
-`Emotion` and `Voice` only travel between modules inside the server.
+`Voice` only travels between modules inside the server. `Emotion` does too
+(EMO -> EAG), and a client may subscribe to it to show what the server senses
+while the user speaks.
 """
 
 from huri_events.audio import Audio

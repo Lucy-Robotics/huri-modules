@@ -38,6 +38,10 @@ exclude = [
   "^packages/[^/]+/tests/",
 ]
 
+[tool.coverage.run]
+# Coverage measures the shipped code of packages/, not its tests.
+omit = ["*/tests/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests", "packages/*/tests"]
 # The distributions in this repo (packages/*), importable from a
