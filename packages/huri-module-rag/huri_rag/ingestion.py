@@ -438,7 +438,10 @@ def main():
         "--no-verify-ssl",
         action="store_true",
         default=False,
-        help="Disable SSL certificate verification (needed for self-signed LAN certs).",
+        help=(
+            "Disable TLS certificate verification for Qdrant and the remote embedding "
+            "endpoint. Use only in a trusted development environment."
+        ),
     )
     parser.add_argument("--embedding-model", type=str, default="BAAI/bge-large-en-v1.5")
     parser.add_argument(
