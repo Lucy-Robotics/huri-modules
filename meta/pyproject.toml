@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 # tests/test_metapackage.py keeps it in step with registry.toml and packages/.
 [project]
 name = "huri-modules"
-version = "0.1.1"  # = the huri-modules release (RELEASING.md)
+version = "0.2.0"  # = the huri-modules release (RELEASING.md)
 description = "HuRI's curated modules: pick them with extras, e.g. huri-modules[vad,stt,tts]"
 readme = "README.md"
 license = { file = "LICENSE" }

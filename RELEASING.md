@@ -109,11 +109,13 @@ the key to fix.
 | huri-modules | huri-core |
 |---|---|
 | 0.1.x | 0.4.x |
+| 0.2.x | 0.4.x |
 
 A huri-modules minor line supports one huri-core minor line (huri-core may break
 its public surface in a minor bump while it is `0.x`, see its RELEASING.md). A
 huri-core patch release needs no huri-modules release; a huri-core minor
-release needs a huri-modules minor release (`0.2.0` for huri-core `0.5.x`).
+release needs a huri-modules minor release: `0.2.0` is built against huri-core
+`0.4.1`, and huri-core `0.5.x` will need huri-modules `0.3.0`.
 `huri hub` reads the registry at `HURI_MODULES_REF` (`main`, the latest
 release, by default): pick the huri-modules tag of this table that matches your
 huri-core.
