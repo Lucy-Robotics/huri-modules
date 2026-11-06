@@ -870,7 +870,7 @@ class RAG(ModuleWithHandle, ModuleWithId):
 
         parts: list[str] = []
         stream = self._handle.options(stream=True).stream.remote(query)
-        async for delta in stream:  # type: ignore[union-attr]
+        async for delta in stream:
             parts.append(delta)
             yield Token(text=delta, end=False)
         yield Token(text="", end=True)
