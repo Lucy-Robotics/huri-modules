@@ -33,10 +33,10 @@ class RemoteEmbedder:
     the existing ``.tolist()`` / ``len(...)`` call sites keep working unchanged.
     """
 
-    def __init__(self, url: str, model_name: str):
+    def __init__(self, url: str, model_name: str, verify_ssl: bool = True) -> None:
         self.url = url.rstrip("/")
         self.model_name = model_name
-        self._client = httpx.Client(timeout=60.0, verify=False)
+        self._client = httpx.Client(timeout=60.0, verify=verify_ssl)
 
     def encode(self, text: str, normalize_embeddings: bool = True) -> np.ndarray:
         resp = self._client.post(
@@ -535,7 +535,9 @@ def main():
                 f"Embedding remotely via {args.embedding_url} "
                 f"(model={args.embedding_model})"
             )
-            model = RemoteEmbedder(args.embedding_url, args.embedding_model)
+            model = RemoteEmbedder(
+                args.embedding_url, args.embedding_model, verify_ssl=verify_ssl
+            )
         else:
             from sentence_transformers import SentenceTransformer
 
