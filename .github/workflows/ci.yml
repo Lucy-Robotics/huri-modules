@@ -318,7 +318,9 @@ jobs:
       - name: pytest
         id: pytest
         continue-on-error: ${{ matrix.canary }}
-        run: pytest -q
+        # Branch coverage of packages/ (tests omitted, pyproject.toml), failing
+        # under the floor of huri-core's docs/TESTING.md.
+        run: pytest -q --cov=packages --cov-branch --cov-report=term-missing:skip-covered --cov-fail-under=75
         env:
           HURI_PIPER_VOICE: /tmp/piper/en_US-lessac-medium.onnx
       - name: the huri-modules metapackage (meta/) builds and its metadata is valid
