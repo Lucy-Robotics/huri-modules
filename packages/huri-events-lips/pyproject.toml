@@ -6,8 +6,12 @@ build-backend = "setuptools.build_meta"
 name = "huri-events-lips"
 version = "0.1.0"
 description = "Events of the HuRI lips module: ARKit blend shape weights in step with the voice"
+readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["huri-core>=0.4,<0.5", "numpy>=1.26"]
+dependencies = [
+  "huri-core>=0.4,<0.5",
+  "numpy>=1.26",
+]
 
 [project.entry-points."huri.events"]
 "lips.face" = "huri_events_lips:FaceWeights"
