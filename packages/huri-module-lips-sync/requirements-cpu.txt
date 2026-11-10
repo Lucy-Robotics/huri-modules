@@ -1,9 +1,5 @@
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.8.0+cpu
-transformers==4.46.3
-onnx==1.22.0
-onnxruntime==1.31.1; python_version >= "3.11"
-onnxruntime==1.23.2; python_version < "3.11"
-scipy==1.17.1; python_version >= "3.11"
-scipy==1.15.3; python_version < "3.11"
+# Hardware pins of huri-module-lips-sync on CPU. torch comes from the CPU index the installer uses first.
+# Installed by scripts/install_local.sh through scripts/module_requirements.py.
+transformers==4.51.3
+scipy>=1.11
 numpy==1.26.4

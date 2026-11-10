@@ -68,6 +68,12 @@ def test_each_curated_module_lives_in_exactly_one_package():
         "mov",
         "tts",
         "tts_cosyvoice",
+        "think",
+        "think_say",
+        "think_token",
+        "think_stop",
+        "lips",
+        "tts_phonemes",
     }
 
 

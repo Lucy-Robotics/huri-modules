@@ -28,6 +28,12 @@ lists what each release contains and the huri-core it supports
 | `tts` | speaks the reply with Piper (CPU) | `huri-module-tts[piper]` |
 | `tts-cosyvoice` | speaks the reply in a cloned voice with CosyVoice3 | `huri-module-tts[cosyvoice]` |
 | `mov` | generates gestures matching the speech (EMAGE) | `huri-module-mov` |
+| `think` | moves like someone thinking until the answer starts | `huri-module-think` |
+| `think-say` | thinks aloud in the TTS's Piper voice until the answer starts | `huri-module-think` |
+| `think-token` | silences `think_say` once the answer is being written | `huri-module-think` |
+| `think-stop` | ends the thinking when the answer is heard | `huri-module-think` |
+| `lips` | lip sync: ARKit blend shapes in step with the voice (LAM) | `huri-module-lips-sync` |
+| `tts-phonemes` | Piper text to speech carrying its phoneme timings, for lip sync | `huri-module-lips-sync` |
 | `events` | the `huri.*` events only | `huri-events` |
 | `hub` | `huri hub` | `huri-hub` |
 
