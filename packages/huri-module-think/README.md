@@ -219,7 +219,7 @@ and the same for `think_say`, `think_token` and `think_stop`. Point `[project.ur
 `pyproject.toml` at the repository first.
 
 HuRI as a whole is presented at
-[Lucy-Robotics/HuRI-landing](https://github.com/Lucy-Robotics/HuRI-landing).
+[Lucy-Robotics/huri-core](https://github.com/Lucy-Robotics/huri-core#huri-ecosystem).
 
 ## License
 

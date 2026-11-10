@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-
 from huri_think.motion import (
     EYE_JOINTS,
     GESTURE_NAMES,

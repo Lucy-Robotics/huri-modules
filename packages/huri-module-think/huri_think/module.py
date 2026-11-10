@@ -13,15 +13,15 @@ from typing import (
 )
 
 import numpy as np
-from huri_core.core.module import ModuleWithId
 from huri_events.audio import Audio
 from huri_events.motion import Motion
 from huri_events.question import RAGQuestion
 from huri_events.text import Token
-
 from huri_think.body import Body
 from huri_think.motion import ThinkingMotion
 from huri_think.speech import HUMS, OPENERS, STALLS, ThinkingVoice, pick
+
+from huri_core.core.module import ModuleWithId
 
 _EXPR_DIM = 100
 _POLL_S = 0.05

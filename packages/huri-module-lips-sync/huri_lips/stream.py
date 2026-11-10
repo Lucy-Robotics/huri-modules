@@ -1,10 +1,9 @@
 from typing import Callable, List, Optional, Tuple
 
 import numpy as np
-from scipy.signal import resample_poly, savgol_filter
-
 from huri_events_lips import ARKIT_INDEX, ARKIT_NAMES, N_SHAPES
 from huri_lips.config import FPS, SAMPLE_RATE, WINDOW_FRAMES, WINDOW_SAMPLES
+from scipy.signal import resample_poly, savgol_filter
 
 Infer = Callable[[np.ndarray], np.ndarray]
 

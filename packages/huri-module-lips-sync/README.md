@@ -17,7 +17,7 @@ huri.audio.out ──> lips ──> lips.face   (FaceWeights: 52 ARKit weights a
 |---|---|---|
 | `lips` | `huri.audio.out` → `lips.face` | ARKit blend shapes from the voice (TTS, and huri-module-think's thinking phrases) |
 
-`lips.face` is this repository's own event (`huri-events-lips`, in `events/`):
+`lips.face` is this repository's own event (`huri-events-lips`, in `../huri-events-lips/`):
 a client installs only that to decode it. Its `pts` is the clock of
 `Audio.pts`, so a client plays frame `i` when the voice reaches
 `pts + i / fps`. The frames come ahead of the voice: a sentence's face is
@@ -48,7 +48,7 @@ python -m venv .venv && . .venv/bin/activate
 python -m pip install \
   "huri-core[server] @ git+https://github.com/Lucy-Robotics/huri-core.git@<ref>" \
   "huri-events @ git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=packages/huri-events"
-./install.sh             # picks requirements-{cpu,nvidia,amd}.txt, installs events/ and the module,
+./install.sh             # picks requirements-{cpu,nvidia,amd}.txt, installs ../huri-events-lips and the module,
                          # downloads LAM's weights and, on a CPU, exports them to int8 ONNX
 pytest
 ```
@@ -137,7 +137,7 @@ shapes and leaves the eyes to itself. HuRI-Playground does so.
 | `huri_lips/engine.py` | the backends: torch (GPU/CPU), onnxruntime (CPU) |
 | `huri_lips/lam.py` | LAM-A2E's network in PyTorch, its weights, the ONNX export |
 | `huri_lips/__main__.py` | `fetch`, `export-onnx`, `run`, `bench` |
-| `events/` | `huri-events-lips`: the `lips.face` event (`FaceWeights`) and the ARKit names |
+| `../huri-events-lips/` | `huri-events-lips`: the `lips.face` event (`FaceWeights`) and the ARKit names |
 | `tests/` | the event's wire format, the windows, the module with a fake model, the server's checks |
 
 ## Licence

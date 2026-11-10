@@ -15,7 +15,6 @@ import wave
 from typing import List, Optional
 
 import numpy as np
-
 from huri_think.motion import HEAD, ThinkingMotion
 from huri_think.speech import OPENERS, STALLS, ThinkingVoice
 

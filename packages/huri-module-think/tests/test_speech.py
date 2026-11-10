@@ -2,7 +2,6 @@ import os
 
 import numpy as np
 import pytest
-
 from huri_think.speech import OPENERS, STALLS, VOICE_ENV, ThinkingVoice, pick
 
 

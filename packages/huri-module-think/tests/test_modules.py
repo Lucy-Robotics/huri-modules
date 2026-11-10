@@ -3,18 +3,18 @@ import itertools
 
 import numpy as np
 import pytest
-from huri_core.core.compat import check_manifests, check_modules, check_session
-from huri_core.core.plugins import find_manifest, load_events, load_modules
-from huri_core.testing import ModuleHarness
 from huri_events.audio import Audio
 from huri_events.motion import Motion
 from huri_events.question import RAGQuestion
 from huri_events.text import Token
-
 from huri_think import module as think_module
 from huri_think import speech
 from huri_think.module import SIGNALS, WRITTEN, Think, ThinkSay, ThinkStop, ThinkToken
 from huri_think.motion import REST_POSE
+
+from huri_core.core.compat import check_manifests, check_modules, check_session
+from huri_core.core.plugins import find_manifest, load_events, load_modules
+from huri_core.testing import ModuleHarness
 
 NAMES = ["think", "think_say", "think_token", "think_stop"]
 QUESTION = RAGQuestion.from_wire({"text": "what is the meaning of life?"})

@@ -66,7 +66,7 @@ if grep -qvE '^\s*(#|$)' "$pins"; then
   $pip install -r "$pins"
 fi
 # The module and its events in one call: pip finds huri-events-lips only here.
-$pip install -e ./events -e ".[dev]"
+$pip install -e ../huri-events-lips -e ".[dev]"
 
 if ((models)); then
   python="${PYTHON:-python}"

@@ -95,7 +95,6 @@ def _patch_voice(args) -> None:
     import shutil
 
     import onnx
-
     from huri_lips.config import models_dir
 
     voice = Path(args.voice)

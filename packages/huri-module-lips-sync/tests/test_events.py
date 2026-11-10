@@ -2,7 +2,6 @@ import struct
 
 import numpy as np
 import pytest
-
 from huri_events_lips import (
     ARKIT_INDEX,
     ARKIT_NAMES,

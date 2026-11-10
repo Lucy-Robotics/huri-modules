@@ -1,7 +1,6 @@
 from typing import Dict, Optional, Tuple
 
 import numpy as np
-
 from huri_think.body import (
     Body,
     quat_from_rotvec,

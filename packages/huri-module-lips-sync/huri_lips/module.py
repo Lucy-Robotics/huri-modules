@@ -3,14 +3,14 @@ import os
 from typing import AsyncGenerator, List, Optional
 
 import numpy as np
-from huri_core.core.module import ModuleWithHandle
 from huri_events.audio import Audio
-from ray import serve
-
 from huri_events_lips import FaceWeights
 from huri_lips.config import FPS, SAMPLE_RATE
 from huri_lips.phonemes import arkit_from_visemes, viseme_frames
 from huri_lips.stream import LipStream, Smoother, to_16k
+from ray import serve
+
+from huri_core.core.module import ModuleWithHandle
 
 _BACKEND = os.environ.get("HURI_LIPS_BACKEND", "auto")
 _DEVICE = os.environ.get("HURI_LIPS_DEVICE") or None

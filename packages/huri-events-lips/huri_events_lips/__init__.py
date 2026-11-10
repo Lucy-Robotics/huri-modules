@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 import numpy as np
+
 from huri_core.core.events import EventData
 
 # Apple ARKit's 52 blend shapes, in this order on the wire (alphabetical, as

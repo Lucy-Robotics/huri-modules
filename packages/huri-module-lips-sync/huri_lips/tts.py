@@ -6,12 +6,11 @@ from typing import AsyncGenerator, List, Optional, Tuple
 
 import numpy as np
 from huri_events.audio import Audio
+from huri_lips.config import models_dir
+from huri_lips.phonemes import Phoneme
 from huri_tts.piper.handle import _VOICE_PATH, PiperTTSHandle
 from huri_tts.streaming import StreamingTTS
 from ray import serve
-
-from huri_lips.config import models_dir
-from huri_lips.phonemes import Phoneme
 
 
 def aligned_voice(voice: str = _VOICE_PATH) -> Path:

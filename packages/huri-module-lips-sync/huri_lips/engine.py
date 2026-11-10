@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-
 from huri_lips.config import (
     IDENTITIES,
     ONNX_FILE,
@@ -33,7 +32,6 @@ class TorchEngine(Engine):
         half: bool = False,
     ):
         import torch
-
         from huri_lips.lam import load_model, one_hot_identity
 
         self.torch = torch

@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-
 from huri_think.body import Body, arm_points, thinking_arms
 from huri_think.module import Think
 

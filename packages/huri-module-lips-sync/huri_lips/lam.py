@@ -10,9 +10,6 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import torch
-from torch import nn
-from torch.nn import functional as F
-
 from huri_lips.config import (
     CHECKPOINT,
     HF_FILE,
@@ -23,6 +20,8 @@ from huri_lips.config import (
     WINDOW_FRAMES,
     models_dir,
 )
+from torch import nn
+from torch.nn import functional as F
 
 # facebook/wav2vec2-base-960h's architecture (LAM's configs/wav2vec2_config.json);
 # its weights come with LAM's checkpoint, nothing is downloaded from it.

@@ -1,14 +1,14 @@
 import asyncio
 
 import numpy as np
-from huri_core.core.compat import check_manifests, check_modules, check_session
-from huri_core.core.plugins import find_manifest, load_events, load_modules
-from huri_core.testing import LocalHandle, ModuleHarness
 from huri_events.audio import Audio
-
 from huri_events_lips import ARKIT_INDEX, N_SHAPES, FaceWeights
 from huri_lips.config import WINDOW_FRAMES
 from huri_lips.module import Lips
+
+from huri_core.core.compat import check_manifests, check_modules, check_session
+from huri_core.core.plugins import find_manifest, load_events, load_modules
+from huri_core.testing import LocalHandle, ModuleHarness
 
 SR = 22050
 JAW = ARKIT_INDEX["jawOpen"]
