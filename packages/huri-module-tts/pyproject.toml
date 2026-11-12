@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "huri-module-tts"
-version = "0.2.0"
+version = "0.2.1"
 description = "HuRI modules: text to speech with Piper (CPU, any machine) or CosyVoice3 (voice cloning, NVIDIA GPU)"
 readme = "README.md"
 requires-python = ">=3.10"

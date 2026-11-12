@@ -1077,9 +1077,14 @@ class RAG(ModuleWithHandle, ModuleWithId):
 
             parts: list[str] = []
             stream = self._handle.options(stream=True).stream.remote(query)
-            async for delta in stream:  # type: ignore[union-attr]
-                parts.append(delta)
-                yield Token(text=delta, end=False)
+            try:
+                async for delta in stream:  # type: ignore[union-attr]
+                    parts.append(delta)
+                    yield Token(text=delta, end=False)
+            except (asyncio.CancelledError, GeneratorExit):
+                # Ray Serve does not pass a caller's cancel on to the replica
+                stream.cancel()
+                raise
             yield Token(text="", end=True)
 
             evicted = self._record_turn(question_text, "".join(parts))
