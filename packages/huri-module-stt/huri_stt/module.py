@@ -192,7 +192,13 @@ class STT(ModuleWithHandle):
                 return
 
             audio = np.concatenate(chunks, axis=0)
-            text = await self._handle.transcribe.remote(audio, self.language)
+            response = self._handle.transcribe.remote(audio, self.language)
+            try:
+                text = await response
+            except asyncio.CancelledError:
+                # Ray Serve does not pass a caller's cancel on to the replica
+                response.cancel()
+                raise
 
             async with self.lock:
                 if end:
