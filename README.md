@@ -276,7 +276,7 @@ It generates:
 | Path                                             | What                                              |
 | ------------------------------------------------ | ------------------------------------------------- |
 | `config/huri_local.generated.yaml`               | Ray Serve config for this machine                 |
-| `config/client_local.generated.yaml`             | matching session, plus huri-cli's `cli:` section  |
+| `config/client_local.generated.yaml`             | matching session, `log:` (with vad), `cli:`    |
 | `.huri-local/huri.env`                           | the same runtime env vars as a plain `.env`       |
 | `.huri-local/secrets.env`                        | LLM API key, `0600`, never in the configs         |
 | `.huri-local/env.sh`                             | venv + `huri.env` + `secrets.env` in one `source` |
