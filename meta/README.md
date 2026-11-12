@@ -23,6 +23,8 @@ lists what each release contains and the huri-core it supports
 | `tag` | stitches overlapping transcript passes into one sentence | `huri-module-tag` |
 | `emo` | estimates the emotion of speech from its prosody | `huri-module-emo[model]` |
 | `eag` | aggregates emotion estimates over an utterance | `huri-module-emo` |
+| `emo-react` | reacts to the user's emotion with HuRI's own expression | `huri-module-emo` |
+| `emo-out` | expresses the emotion of HuRI's reply, sentence by sentence | `huri-module-emo[model]` |
 | `rag` | answers questions from memory with an LLM | `huri-module-rag[rag]` |
 | `qag` | joins a transcript and its emotion into a question | `huri-module-rag` |
 | `tts` | speaks the reply with Piper (CPU) | `huri-module-tts[piper]` |

@@ -1,0 +1,7 @@
+name = "emo_out"
+summary = "Expresses the emotion of HuRI's reply, sentence by sentence (GoEmotions text classifier)"
+input = { topic = "huri.token", event = "huri_events.text:Token" }
+output = { topic = "huri.emotion.out", event = "huri_events.emotion:Expression" }
+events = ["huri-events>=0.1,<0.3"]
+requires = { gpu = false, actuation = false }
+huri_core = ">=0.4,<0.5"
