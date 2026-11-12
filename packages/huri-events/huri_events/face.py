@@ -120,7 +120,7 @@ class FaceWeights(EventData[bytes]):
 
     def to_wire(self) -> bytes:
         header = _HEADER.pack(float(self.pts), int(self.fps), self.frames)
-        body = self.weights.astype("<f4", copy=False).tobytes()
+        body: bytes = self.weights.astype("<f4", copy=False).tobytes()
         if self.visemes is not None:
             body += self.visemes.astype("<f4", copy=False).tobytes()
         return header + body
