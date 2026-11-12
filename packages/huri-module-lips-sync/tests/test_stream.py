@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from huri_events_lips import ARKIT_INDEX, N_SHAPES
+from huri_events.face import ARKIT_INDEX, N_SHAPES
 from huri_lips.config import SAMPLE_RATE, WINDOW_FRAMES, WINDOW_SAMPLES
 from huri_lips.stream import LipStream, Smoother, frame_sample, to_16k
 

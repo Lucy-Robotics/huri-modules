@@ -56,7 +56,6 @@ pythonpath = [
   "packages/huri-module-mov",
   "packages/huri-module-tts",
   "packages/huri-hub",
-  "packages/huri-events-lips",
   "packages/huri-module-lips-sync",
   "packages/huri-module-think",
 ]

@@ -30,12 +30,6 @@ namespace = "huri"
 source = { path = "packages/huri-events" }
 verified = 2026-10-12
 
-[[events]]
-package = "huri-events-lips"
-namespace = "lips"
-source = { path = "packages/huri-events-lips" }
-verified = 2026-11-10
-
 [[module]]
 name = "emo"
 package = "huri-module-emo"

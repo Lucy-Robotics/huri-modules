@@ -2,7 +2,7 @@ import asyncio
 
 import numpy as np
 from huri_events.audio import Audio
-from huri_events_lips import ARKIT_INDEX, N_SHAPES, FaceWeights
+from huri_events.face import ARKIT_INDEX, N_SHAPES, FaceWeights
 from huri_lips.config import WINDOW_FRAMES
 from huri_lips.module import Lips
 
@@ -114,7 +114,7 @@ def test_windows_are_batched():
 def test_the_server_accepts_the_module_and_its_manifest():
     modules = load_modules(["lips"])
     events = load_events()
-    assert "lips.face" in events
+    assert "huri.lips.face" in events
     check_modules(modules, events)
     manifests = {"lips": find_manifest("lips")}
     assert None not in manifests.values()
@@ -126,7 +126,9 @@ def test_a_session_with_a_tts_is_complete():
         input_type, output_type = "huri.question", "huri.audio.out"
 
     check_session(
-        [Tts, Lips], sent=["huri.question"], subscribed=["huri.audio.out", "lips.face"]
+        [Tts, Lips],
+        sent=["huri.question"],
+        subscribed=["huri.audio.out", "huri.lips.face"],
     )
 
 

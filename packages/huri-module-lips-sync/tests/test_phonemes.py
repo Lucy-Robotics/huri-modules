@@ -1,6 +1,6 @@
 import numpy as np
-from huri_events_lips import ARKIT_INDEX, N_VISEMES
-from huri_events_lips import VISEME_INDEX as V
+from huri_events.face import ARKIT_INDEX, N_VISEMES
+from huri_events.face import VISEME_INDEX as V
 from huri_lips.phonemes import (
     arkit_from_visemes,
     merge_marks,

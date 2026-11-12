@@ -4,7 +4,7 @@ from typing import AsyncGenerator, List, Optional
 
 import numpy as np
 from huri_events.audio import Audio
-from huri_events_lips import FaceWeights
+from huri_events.face import FaceWeights
 from huri_lips.config import FPS, SAMPLE_RATE
 from huri_lips.phonemes import arkit_from_visemes, viseme_frames
 from huri_lips.stream import LipStream, Smoother, to_16k
@@ -50,7 +50,7 @@ class LipsHandle:
 class Lips(ModuleWithHandle):
     _handle_cls = LipsHandle
     input_type = "huri.audio.out"
-    output_type = "lips.face"
+    output_type = "huri.lips.face"
     input_event = Audio
     output_event = FaceWeights
 

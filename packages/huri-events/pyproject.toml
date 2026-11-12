@@ -26,6 +26,7 @@ dependencies = [
 "huri.question" = "huri_events.question:RAGQuestion"
 "huri.token" = "huri_events.text:Token"
 "huri.motion" = "huri_events.motion:Motion"
+"huri.lips.face" = "huri_events.face:FaceWeights"
 
 [tool.setuptools.packages.find]
 include = ["huri_events*"]

@@ -128,12 +128,13 @@ class FaceWeights(EventData[bytes]):
     @classmethod
     def from_wire(cls, data: bytes) -> "FaceWeights":
         if len(data) < _HEADER.size:
-            raise ValueError(f"truncated lips.face header: {len(data)} bytes")
+            raise ValueError(f"truncated huri.lips.face header: {len(data)} bytes")
         pts, fps, n = _HEADER.unpack_from(data)
         body = np.frombuffer(data, dtype="<f4", offset=_HEADER.size)
         if body.size not in (n * N_SHAPES, n * (N_SHAPES + N_VISEMES)):
             raise ValueError(
-                f"lips.face: {body.size} floats for {n} frames of {N_SHAPES} shapes"
+                f"huri.lips.face: {body.size} floats for {n} frames "
+                f"of {N_SHAPES} shapes"
             )
         weights = body[: n * N_SHAPES].reshape(n, N_SHAPES).copy()
         visemes = None

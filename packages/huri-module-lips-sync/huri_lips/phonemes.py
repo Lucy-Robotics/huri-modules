@@ -2,7 +2,7 @@ import math
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
-from huri_events_lips import ARKIT_INDEX, N_SHAPES, N_VISEMES, VISEME_INDEX
+from huri_events.face import ARKIT_INDEX, N_SHAPES, N_VISEMES, VISEME_INDEX
 
 Phoneme = Tuple[str, float, float]
 

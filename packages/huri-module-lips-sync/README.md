@@ -9,15 +9,15 @@ voice, for an avatar or a robot face to play. The weights are computed by
 it runs **on a GPU or on a CPU**.
 
 ```
-huri.audio.out ──> lips ──> lips.face   (FaceWeights: 52 ARKit weights at 30 fps,
+huri.audio.out ──> lips ──> huri.lips.face   (FaceWeights: 52 ARKit weights at 30 fps,
                                          pts on the voice's timeline)
 ```
 
 | Module | Topics | What it does |
 |---|---|---|
-| `lips` | `huri.audio.out` → `lips.face` | ARKit blend shapes from the voice (TTS, and huri-module-think's thinking phrases) |
+| `lips` | `huri.audio.out` → `huri.lips.face` | ARKit blend shapes from the voice (TTS, and huri-module-think's thinking phrases) |
 
-`lips.face` is this repository's own event (`huri-events-lips`, in `../huri-events-lips/`):
+`huri.lips.face` is a curated event (`FaceWeights` in `huri-events`, `huri_events/face.py`):
 a client installs only that to decode it. Its `pts` is the clock of
 `Audio.pts`, so a client plays frame `i` when the voice reaches
 `pts + i / fps`. The frames come ahead of the voice: a sentence's face is
@@ -48,7 +48,7 @@ python -m venv .venv && . .venv/bin/activate
 python -m pip install \
   "huri-core[server] @ git+https://github.com/Lucy-Robotics/huri-core.git@<ref>" \
   "huri-events @ git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=packages/huri-events"
-./install.sh             # picks requirements-{cpu,nvidia,amd}.txt, installs ../huri-events-lips and the module,
+./install.sh             # picks requirements-{cpu,nvidia,amd}.txt, installs ../huri-events and the module,
                          # downloads LAM's weights and, on a CPU, exports them to int8 ONNX
 pytest
 ```
@@ -104,7 +104,7 @@ A client asks for it with the TTS:
 modules:
   tts: { name: tts }
   lips: { name: lips, args: { hop_frames: 15, lookahead_frames: 6 } }
-subscribe: [huri.audio.out, lips.face]
+subscribe: [huri.audio.out, huri.lips.face]
 ```
 
 | Argument | Default | What it does |
@@ -137,7 +137,7 @@ shapes and leaves the eyes to itself. HuRI-Playground does so.
 | `huri_lips/engine.py` | the backends: torch (GPU/CPU), onnxruntime (CPU) |
 | `huri_lips/lam.py` | LAM-A2E's network in PyTorch, its weights, the ONNX export |
 | `huri_lips/__main__.py` | `fetch`, `export-onnx`, `run`, `bench` |
-| `../huri-events-lips/` | `huri-events-lips`: the `lips.face` event (`FaceWeights`) and the ARKit names |
+| `../huri-events/huri_events/face.py` | the `huri.lips.face` event (`FaceWeights`) and the ARKit names |
 | `tests/` | the event's wire format, the windows, the module with a fake model, the server's checks |
 
 ## Licence

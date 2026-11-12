@@ -2,7 +2,7 @@ import struct
 
 import numpy as np
 import pytest
-from huri_events_lips import (
+from huri_events.face import (
     ARKIT_INDEX,
     ARKIT_NAMES,
     N_SHAPES,

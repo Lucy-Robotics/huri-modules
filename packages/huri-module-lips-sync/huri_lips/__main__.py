@@ -59,7 +59,7 @@ def _export(args) -> None:
 
 
 def _run(args) -> None:
-    from huri_events_lips import ARKIT_NAMES
+    from huri_events.face import ARKIT_NAMES
     from huri_lips.engine import load_engine
     from huri_lips.stream import LipStream, to_16k
 
