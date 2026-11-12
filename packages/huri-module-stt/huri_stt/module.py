@@ -93,6 +93,13 @@ class STT(ModuleWithHandle):
     transcription to a handle-backed STTHandle, so the Whisper model runs
     off the HuRI master node.
 
+    While the user speaks, overlapping windows are transcribed as they fill
+    (``end=False``): live captions, and TAG's fallback. When the turn ends the
+    whole utterance is transcribed once more and sent with ``end=True``. Whisper
+    hears an overlap differently from one window to the next ("how are you" /
+    "for you"), so text stitched from windows repeats or garbles words; one pass
+    over the whole turn has none of those seams.
+
     input: huri.voice,
     output: huri.transcript
 
@@ -129,6 +136,8 @@ class STT(ModuleWithHandle):
         self.step_size: int = int(transcribe_step / block_duration)
 
         self.buffer: List[np.ndarray] = []
+        # Every frame of the current turn, for the final whole-utterance pass.
+        self.utterance: List[np.ndarray] = []
         # Number of leading frames in `buffer` already covered by a previous
         # transcription (the overlap kept when the window slides). Frames past
         # it are audio Whisper has not heard yet.
@@ -147,6 +156,7 @@ class STT(ModuleWithHandle):
                 self._end_requested = True
             else:
                 self.buffer.append(voice.data)
+                self.utterance.append(voice.data)
             if self.running:
                 return
             self.running = True
@@ -170,14 +180,8 @@ class STT(ModuleWithHandle):
                 end = self._end_requested
                 if end:
                     self._end_requested = False
-                    chunks = list(self.buffer)
-                    if len(chunks) <= self._covered:
-                        # Nothing new since the last window (only the already
-                        # transcribed overlap is left): re-running Whisper on it
-                        # would only repeat itself or invite hallucinations.
-                        self.buffer = []
-                        self._covered = 0
-                        chunks = []
+                    chunks = list(self.utterance)
+                    buffered = len(self.buffer)
                 else:
                     if len(self.buffer) < self.window_size:
                         return
@@ -192,10 +196,11 @@ class STT(ModuleWithHandle):
 
             async with self.lock:
                 if end:
-                    # Whole remaining buffer was transcribed: reset per-turn
-                    # state so the NEXT utterance is independent. Frames that
-                    # arrived during the await belong to the next turn.
-                    self.buffer = self.buffer[len(chunks) :]
+                    # Whole turn was transcribed: reset per-turn state so the
+                    # NEXT utterance is independent. Frames that arrived during
+                    # the await belong to the next turn.
+                    self.utterance = self.utterance[len(chunks) :]
+                    self.buffer = self.buffer[buffered:]
                     self._covered = 0
                 else:
                     # Mid-utterance: slide the window forward, keeping the

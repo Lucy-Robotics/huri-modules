@@ -25,6 +25,7 @@ from typing import Dict, Iterable, List, Optional, Set
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT = [
     "README.md",
+    "CONTRIBUTING.md",
     "RELEASING.md",
     "ACCEPTANCE.md",
     "modules/README.md",

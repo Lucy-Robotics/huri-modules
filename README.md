@@ -1,5 +1,7 @@
 # huri-modules
 
+[![CI](https://github.com/Lucy-Robotics/huri-modules/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucy-Robotics/huri-modules/actions/workflows/ci.yml)
+
 The one repository to clone to try or deploy [HuRI](https://github.com/Lucy-Robotics/huri-core#huri-ecosystem),
 the open-source conversational pipeline for humanoid robots and virtual avatars:
 speech to text, retrieval-augmented answers from an LLM, emotion, speech
@@ -92,7 +94,7 @@ uv python install 3.12        # or: yay -S python312, or pyenv
 ./install.sh --python "$(uv python find 3.12)"
 ```
 
-Everything else (a C toolchain, `ffmpeg`, `libsndfile`, `portaudio`, and the
+Everything else (a C toolchain, `zstd`, `ffmpeg`, `libsndfile`, `portaudio`, and the
 ROCm runtime on AMD) is installed for you by the `system` stage. Ollama and
 Qdrant are installed and started too unless you point at remote ones.
 
@@ -103,7 +105,7 @@ works on it. Nothing here is aspirational — these are measured outcomes:
 
 | Module                                                     | CPU only                         | NVIDIA       | AMD / ROCm                                |
 | ---------------------------------------------------------- | -------------------------------- | ------------ | ----------------------------------------- |
-| **STT** (faster-whisper)                                   | ✅ `int8`, realtime for `base`   | ✅ `float16` | ✅ `float16`                              |
+| **STT** (faster-whisper)                                   | ✅ `int8`, realtime for `base`   | ✅ `float16` | ⚠️ runs on CPU: the ROCm build garbles transcripts |
 | **TTS — piper** (default without an NVIDIA GPU)            | ✅ **~30x faster than realtime** | ✅           | ✅ (runs on CPU; it does not need a GPU)  |
 | **TTS — cosyvoice** (default on NVIDIA with ≥4.4 GiB free) | ⚠️ ~7x _slower_ than realtime    | ✅ `fp16`    | ❌ vocoder faults in a MIOpen convolution |
 | **RAG / LLM** (Ollama)                                     | ✅ tier picked from free RAM     | ✅           | ✅                                        |
@@ -149,7 +151,7 @@ rejected with a `session_error` naming both sets.
 | [`huri-module-stt`](packages/huri-module-stt) | `stt` | transcribes speech with faster-whisper (CPU or GPU) |
 | [`huri-module-tag`](packages/huri-module-tag) | `tag` | stitches overlapping transcript passes into one sentence |
 | [`huri-module-emo`](packages/huri-module-emo) | `emo`, `eag` | estimates the emotion of speech from its prosody, and aggregates it over an utterance |
-| [`huri-module-rag`](packages/huri-module-rag) | `rag`, `qag` | answers from memory with an LLM, streaming tokens; joins a transcript and its emotion into a question; ingestion and memory tools |
+| [`huri-module-rag`](packages/huri-module-rag) | `rag`, `qag` | answers from memory with an LLM, streaming tokens, told how the user sounded; joins a transcript and its emotion into a question, without waiting for the emotion (`mode: parallel`, the default) or after it (`sequential`); ingestion and memory tools |
 | [`huri-module-mov`](packages/huri-module-mov) | `mov` | SMPL-X co-speech gestures (EMAGE, vendored model code) |
 | [`huri-module-tts`](packages/huri-module-tts) | `tts`, `tts_cosyvoice` | speaks the reply: `tts` is the default engine, Piper (ONNX, any CPU; extra `piper`); `tts_cosyvoice` clones a voice with CosyVoice3 (NVIDIA; extra `cosyvoice`), wired instead of `tts` |
 | [`huri-hub`](packages/huri-hub) | — | `huri hub`: finds and installs modules (a tool, not in the registry; it reads it) |
@@ -201,12 +203,16 @@ The installer, the Docker images and CI all read that one file
 | huri-modules | huri-core |
 |---|---|
 | 0.1.x | 0.4.x |
+| 0.2.x | 0.4.x |
 
 CI tests every change against the pinned core (blocking) and against
 huri-core's `dev` branch (non-blocking), so a breaking core change shows up
 before it is released (that canary is red by design between a core minor
 release and the change that moves the modules to the next minor). [RELEASING.md](RELEASING.md) has the policy and the
-release checklist.
+release checklist. CI runs on every push, to any branch, and on every pull
+request; it also builds the sdist and wheel of every package under
+`packages/` and checks that each module's wheel carries its
+`huri_module.toml`.
 
 To develop huri-core and the modules together, point the installer at a local
 checkout instead of the git ref: `HURI_CORE_PATH=../huri-core ./install.sh`
@@ -499,7 +505,7 @@ pip install "huri-core[server] @ $CORE" \
 From git, give huri-core, huri-events and huri-cli as git URLs on the same
 command line as what depends on them, so pip takes them from git and not from
 an index. Use release tags, a huri-core `0.4.x` with a
-huri-modules `0.1.x` (see [Versions](#versions-and-compatibility)); without a
+huri-modules `0.2.x` (see [Versions](#versions-and-compatibility)); without a
 ref pip takes the repository's default branch. `[server]` is Ray Serve + FastAPI and the pins that
 keep them working; each module package declares its own dependencies, and the
 GPU ones ship `requirements-<variant>[.<module>].txt` pins next to it.
@@ -624,7 +630,7 @@ name = "servo"                     # its huri.modules entry point name
 summary = "Gesture to servo angle arrays"
 input = { topic = "huri.motion", event = "huri_events.motion:Motion" }
 output = { topic = "acme.servo_angles", event = "huri_events_servo:ServoAngles" }  # omit for a terminal module
-events = ["huri-events>=0.1,<0.2", "huri-events-servo>=0.1,<0.2"]                  # optional
+events = ["huri-events>=0.2,<0.3", "huri-events-servo>=0.1,<0.2"]                  # optional
 requires = { gpu = false, actuation = false }                                      # optional
 huri_core = ">=0.4,<0.5"
 ```

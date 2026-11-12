@@ -20,7 +20,7 @@ package):
 
 - `huri-events`: a change to a wire format, a topic or an event class's
   public fields is a **minor** bump while it is `0.x` (`0.1` → `0.2`), since
-  modules and clients pin `huri-events>=0.1,<0.2`; adding a topic is a minor
+  modules and clients pin `huri-events>=0.2,<0.3`; adding a topic is a minor
   bump too; a fix that keeps the wire format is a patch.
 - a module: a change to its topics, events, manifest or `user_config` keys is
   a minor bump while `0.x`; anything else that changes behaviour is a patch.
@@ -79,9 +79,11 @@ core minor is under way (see step 5 below). Everything reads it:
 - the Docker images take it as the `HURI_CORE_REF` build arg, defaulting to
   the file (`docker build --build-arg HURI_CORE_REF="$(. ./versions.env && echo "$HURI_CORE_REF")" ...`);
 - CI installs it for the blocking test job, and runs the same tests against
-  huri-core `dev` as a non-blocking canary, so a breaking core change is seen
-  here before core releases it. Once core has released `X.Y.0` and bumped its
-  `dev` to `X.(Y+1).0.dev0`, the canary is **red by design** (core `dev` is
+  huri-core `dev` as a canary, so a breaking core change is seen here before
+  core releases it. The canary job stays green and reports its failing steps
+  as warnings: a failure there is about core, not about the pull request, and
+  must not hold up its merge. Once core has released `X.Y.0` and bumped its
+  `dev` to `X.(Y+1).0.dev0`, the canary **warns by design** (core `dev` is
   outside every module's `>=X.Y,<X.(Y+1)` range) until the pull request of
   step 5 widens the ranges; in that window, read its log for failures other
   than the range checks.
@@ -107,11 +109,13 @@ the key to fix.
 | huri-modules | huri-core |
 |---|---|
 | 0.1.x | 0.4.x |
+| 0.2.x | 0.4.x |
 
 A huri-modules minor line supports one huri-core minor line (huri-core may break
 its public surface in a minor bump while it is `0.x`, see its RELEASING.md). A
 huri-core patch release needs no huri-modules release; a huri-core minor
-release needs a huri-modules minor release (`0.2.0` for huri-core `0.5.x`).
+release needs a huri-modules minor release: `0.2.0` is built against huri-core
+`0.4.1`, and huri-core `0.5.x` will need huri-modules `0.3.0`.
 `huri hub` reads the registry at `HURI_MODULES_REF` (`main`, the latest
 release, by default): pick the huri-modules tag of this table that matches your
 huri-core.
@@ -159,7 +163,7 @@ after the huri-core release they target is tagged:
    `dev` **and** moves every range to `>=X.(Y+1).0.dev0,<X.(Y+2)` (each package
    `pyproject.toml`, each `huri_module.toml` and
    each `registry.toml` entry, in agreement). Until that pull request merges,
-   the `dev canary` CI job is red by design.
+   the `dev canary` CI job warns by design.
 
 A patch release (`0.1.1`) is the same without step 1's range changes: fixes
 only, against the same huri-core minor.

@@ -48,21 +48,35 @@ def test_tag_emits_on_end_and_resets():
     out = ModuleHarness(TAG).run(
         Transcript("what is the", False),
         Transcript("the weather", False),
-        Transcript("weather like", True),
+        # The end transcript is the whole utterance, heard in one pass: it
+        # wins over the windows stitched so far.
+        Transcript("What is the weather like?", True),
         Transcript("", True),
         Transcript("next question", True),
     )
     assert [q.transcript.text for q in out] == [
-        "what is the weather like",
+        "What is the weather like?",
         "next question",
     ]
 
 
-def test_stitches_the_overlapping_passes_stt_emits():
+def test_end_transcript_replaces_garbled_windows():
+    # Seen live: Whisper heard the windows' overlap differently each time.
     out = ModuleHarness(TAG).run(
-        Transcript("what is the", False), Transcript("the weather", True)
+        Transcript("testing how you are", False),
+        Transcript("how you're working.", False),
+        Transcript("Testing how you're working.", True),
     )
-    assert [q.transcript.text for q in out] == ["what is the weather"]
+    assert [q.transcript.text for q in out] == ["Testing how you're working."]
+
+
+def test_falls_back_to_the_windows_when_the_end_pass_is_empty():
+    out = ModuleHarness(TAG).run(
+        Transcript("hello there", False),
+        Transcript("there world", False),
+        Transcript("", True),
+    )
+    assert [q.transcript.text for q in out] == ["hello there world"]
 
 
 def test_min_prefix_is_configurable():
@@ -77,7 +91,8 @@ def test_min_prefix_is_configurable():
     async def run():
         tag = TAG(min_prefix=2)
         await tag.process(Transcript("what is th", False))
-        q = await tag.process(Transcript("the weather", True))
+        await tag.process(Transcript("the weather", False))
+        q = await tag.process(Transcript("", True))
         assert q.transcript.text == "what is the weather"
 
     asyncio.run(run())

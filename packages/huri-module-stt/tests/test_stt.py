@@ -35,13 +35,24 @@ def _voice():
 
 
 async def _feed(stt, n):
+    """n frames at once, as the bus delivers them while a pass is in flight."""
+
     return await stt.feed_all(*[_voice() for _ in range(n)])
+
+
+async def _speak(stt, n):
+    """n frames one after the other, each fully handled before the next."""
+
+    out = []
+    for _ in range(n):
+        out += await stt.feed(_voice())
+    return out
 
 
 def test_end_event_during_inflight_transcription_is_not_lost():
     async def run():
         gate = asyncio.Event()
-        h = FakeWhisper(["what is the", "the weather"], gate)
+        h = FakeWhisper(["what is the", "what is the weather"], gate)
         stt = _stt(h)
         first = asyncio.create_task(_feed(stt, 10))
         await asyncio.sleep(0)
@@ -53,12 +64,13 @@ def test_end_event_during_inflight_transcription_is_not_lost():
         assert await stt.feed(Voice(None)) == []
         gate.set()
         out = await first
-        # STT does not merge: one Transcript per pass, in order (TAG stitches
-        # them, see huri-module-tag's tests).
+        # One Transcript per pass, in order; the last one heard the whole turn
+        # (TAG sends that one, see huri-module-tag's tests).
         assert out == [
             Transcript("what is the", False),
-            Transcript("the weather", True),
+            Transcript("what is the weather", True),
         ]
+        assert h.calls == [10 * 4, 22 * 4]
 
     asyncio.run(run())
 
@@ -69,26 +81,45 @@ def test_tail_beyond_first_window_is_transcribed_at_end():
         stt = _stt(h)
         # Backlog: more frames buffered than one window, then the turn ends.
         stt.module.buffer = [np.zeros(4, np.float32)] * 14
+        stt.module.utterance = list(stt.module.buffer)
         out = await stt.feed(Voice(None))
         assert out == [Transcript("b c d e f", True)]
-        assert h.calls == [14 * 4]  # whole buffer, not just first window
-        assert stt.module.buffer == [] and stt.module._covered == 0
+        assert h.calls == [14 * 4]  # the whole turn, not just the first window
+        assert stt.module.buffer == [] and stt.module.utterance == []
+        assert stt.module._covered == 0
 
     asyncio.run(run())
 
 
-def test_end_with_no_new_audio_skips_whisper():
+def test_end_of_turn_transcribes_the_whole_utterance():
     async def run():
-        h = FakeWhisper(["hello world", "should not be called"])
+        h = FakeWhisper(["hello wor", "a b", "Hello world, a b."])
         stt = _stt(h)
-        out = await _feed(stt, 10)
-        assert out == [Transcript("hello world", False)]
-        stt.module.buffer = stt.module.buffer[
-            : stt.module._covered
-        ]  # only overlap left
+        out = await _speak(stt, 15)
+        assert out == [Transcript("hello wor", False), Transcript("a b", False)]
         out = await stt.feed(Voice(None))
-        assert out == [Transcript("", True)]
-        assert len(h.calls) == 1
+        assert out == [Transcript("Hello world, a b.", True)]
+        # Windows of 10 frames, then one pass over all 15.
+        assert h.calls == [10 * 4, 10 * 4, 15 * 4]
+        assert stt.module.utterance == []
+
+        # The next turn starts from nothing.
+        h.texts = ["yes"]
+        await _speak(stt, 3)
+        assert await stt.feed(Voice(None)) == [Transcript("yes", True)]
+        assert h.calls[-1] == 3 * 4
+
+    asyncio.run(run())
+
+
+def test_end_without_speech_skips_whisper():
+    async def run():
+        h = FakeWhisper(["should not be called"])
+        stt = _stt(h)
+        # The end marker always comes out, or TAG never fires and QAG holds the
+        # turn forever.
+        assert await stt.feed(Voice(None)) == [Transcript("", True)]
+        assert h.calls == []
 
     asyncio.run(run())
 
