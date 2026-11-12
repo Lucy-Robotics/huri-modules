@@ -86,6 +86,7 @@ def test_huri_events_registers_every_curated_topic():
         "huri.voice",
         "huri.transcript",
         "huri.emotion",
+        "huri.emotion.out",
         "huri.partial_question",
         "huri.question",
         "huri.token",

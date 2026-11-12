@@ -22,6 +22,7 @@ dependencies = [
 "huri.voice" = "huri_events.speech:Voice"
 "huri.transcript" = "huri_events.speech:Transcript"
 "huri.emotion" = "huri_events.emotion:Emotion"
+"huri.emotion.out" = "huri_events.emotion:Expression"
 "huri.partial_question" = "huri_events.question:PartialQuestion"
 "huri.question" = "huri_events.question:RAGQuestion"
 "huri.token" = "huri_events.text:Token"
