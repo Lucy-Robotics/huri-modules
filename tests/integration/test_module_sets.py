@@ -240,3 +240,13 @@ def test_the_generated_client_config_answers_a_spoken_question(modules, monkeypa
 @pytest.mark.parametrize("modules", [m for m in ACCEPTED_SETS if "vad" not in m])
 def test_without_vad_the_microphone_is_not_sent(modules):
     assert client_config(modules)["send"] == ["huri.question"]
+
+
+@pytest.mark.parametrize("modules", [m for m in ACCEPTED_SETS if "vad" in m])
+def test_the_generated_client_config_quiets_microphone_audio(modules):
+    assert client_config(modules)["log"] == {"topics": {"huri.audio.in": "WARNING"}}
+
+
+@pytest.mark.parametrize("modules", [m for m in ACCEPTED_SETS if "vad" not in m])
+def test_without_vad_there_is_no_log_section(modules):
+    assert "log" not in client_config(modules)
