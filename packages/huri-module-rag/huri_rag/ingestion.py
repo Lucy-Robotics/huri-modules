@@ -207,7 +207,13 @@ def cmd_pdf(args, client, model, _user_id):
     for path in args.files:
         p = Path(path)
         if p.is_dir():
-            files.extend(p.glob("**/*.pdf"))
+            files.extend(
+                sorted(
+                    f
+                    for f in p.rglob("*")
+                    if f.is_file() and f.suffix.lower() == ".pdf"
+                )
+            )
         elif p.suffix.lower() == ".pdf":
             files.append(p)
         else:
@@ -571,7 +577,6 @@ if __name__ == "__main__":
         python ingestion.py pdf doc1.pdf doc2.pdf doc3.pdf
 
         # Ingest a whole folder of PDFs
-        # TODO: To verify and to add the support of hole paths
         python ingestion.py pdf ./my_documents/
 
         # Write text interactively (type, then Ctrl+D to save)

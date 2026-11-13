@@ -668,3 +668,48 @@ def test_main_loads_local_sentence_transformer_lazily(monkeypatch):
 
     assert observed["model_name"] == "local-model"
     assert isinstance(observed["model"], FakeSentenceTransformer)
+
+
+def _run_cmd_pdf_on_folder(monkeypatch, folder):
+    ingested: list[str] = []
+
+    class Model:
+        def encode(self, *_args, **_kwargs):
+            return np.zeros(3)
+
+    monkeypatch.setattr(ingestion, "ensure_collection", lambda *_args: None)
+    monkeypatch.setattr(ingestion, "extract_text_from_pdf", lambda _path: "content")
+    monkeypatch.setattr(ingestion, "chunk_strat", lambda *_args: ["chunk"])
+
+    def fake_ingest_chunks(*_args: object, **kwargs: object) -> int:
+        source = kwargs["source"]
+        assert isinstance(source, str)
+        ingested.append(source)
+        return 1
+
+    monkeypatch.setattr(ingestion, "ingest_chunks", fake_ingest_chunks)
+    args = SimpleNamespace(files=[str(folder)], collection="docs")
+    ingestion.cmd_pdf(args, object(), Model(), "user")
+    return ingested
+
+
+def test_cmd_pdf_folder_finds_pdfs_whatever_the_extension_case(monkeypatch, tmp_path):
+    (tmp_path / "Facture-2025-03.PDF").touch()
+    (tmp_path / "contrat.pdf").touch()
+    sub = tmp_path / "2024"
+    sub.mkdir()
+    (sub / "Releve.Pdf").touch()
+    (tmp_path / "todo.txt").touch()
+
+    ingested = _run_cmd_pdf_on_folder(monkeypatch, tmp_path)
+
+    assert sorted(ingested) == ["Facture-2025-03.PDF", "Releve.Pdf", "contrat.pdf"]
+
+
+def test_cmd_pdf_folder_without_pdf_says_so(monkeypatch, tmp_path, capsys):
+    (tmp_path / "todo.txt").touch()
+
+    ingested = _run_cmd_pdf_on_folder(monkeypatch, tmp_path)
+
+    assert ingested == []
+    assert "No PDF files found." in capsys.readouterr().out
