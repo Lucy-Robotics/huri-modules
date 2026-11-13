@@ -145,10 +145,10 @@ class LipStream:
 
     @property
     def seconds(self) -> float:
-        return self.audio.size / SAMPLE_RATE
+        return float(self.audio.size / SAMPLE_RATE)
 
     def total_frames(self) -> int:
-        return -(-self.audio.size * FPS // SAMPLE_RATE)
+        return int(-(-self.audio.size * FPS // SAMPLE_RATE))
 
     def add(self, samples16k: np.ndarray) -> None:
         self.audio = np.concatenate([self.audio, samples16k.astype(np.float32)])

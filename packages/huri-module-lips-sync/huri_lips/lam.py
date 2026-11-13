@@ -168,7 +168,8 @@ def _load_into(model: LamA2E, state: Dict[str, torch.Tensor]) -> LamA2E:
 def load_model(checkpoint: Optional[os.PathLike] = None, device: str = "cpu") -> LamA2E:
     path = Path(checkpoint) if checkpoint else fetch_checkpoint()
     state = torch.load(path, map_location="cpu", weights_only=True)
-    return _load_into(LamA2E(), state).eval().to(device)
+    model: LamA2E = _load_into(LamA2E(), state).eval().to(device)
+    return model
 
 
 def fetch_checkpoint(dest: Optional[Path] = None) -> Path:

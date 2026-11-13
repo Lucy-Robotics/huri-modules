@@ -89,7 +89,7 @@ class Body:
             return 0.0
         side_z = self.shoulder[2]
         bulge = (front - side_z) * np.sqrt(max(0.0, 1.0 - (x / (half + margin)) ** 2))
-        return max(0.0, min(side_z + bulge + margin - z, half + margin - abs(x)))
+        return float(max(0.0, min(side_z + bulge + margin - z, half + margin - abs(x))))
 
     def inside(self, point: np.ndarray, margin: float) -> bool:
         return self.depth(point, margin) > 0.0
