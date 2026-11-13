@@ -146,14 +146,31 @@ after the huri-core release they target is tagged:
    installs huri-cli at `HURI_CLI_REF` too) and,
    when the GPU paths changed, `gpu.yml` and the GPU images (`docker.yml` with
    `gpu_images`).
-3. Merge it, then merge `dev` into `main` with a PR named `Release X.Y.Z`.
-4. Tag `main`'s merge commit `X.Y.Z`, push the tag and publish a GitHub
-   release. Then publish to PyPI, from the tag: each package whose version is
-   not on PyPI yet, then the metapackage
-   (`python -m build -o dist packages/<pkg>` for each, `python -m build -o dist meta`,
-   `twine check dist/* && twine upload dist/*`). PyPI never accepts a version
-   twice: a package whose version did not change is skipped
-   (`twine upload --skip-existing`).
+3. Merge it, then open the PR from `dev` into `main`, named `Release X.Y.Z`.
+   Its **Release** check (`.github/workflows/release.yml`) fails, naming the
+   culprit, when the release would be incomplete: any distribution's version
+   (`meta/` or `packages/`) is a pre-release or not canonical; the metapackage
+   version is already tagged or already on PyPI; a package under `packages/`
+   changed since the previous release tag while its version is already on PyPI
+   (changed without a version bump: PyPI would silently keep the old code; a
+   package new since the previous tag counts as changed); `HURI_CORE_REF` or
+   `HURI_CLI_REF` is not a release tag; a dependency is a direct URL, which
+   PyPI refuses; or `tests/test_metapackage.py` fails. It also builds and
+   `twine check`s every distribution. Its job summary lists what merging will
+   publish: the tag, the GitHub release, and one row per package (`upload` or
+   `already on PyPI, skipped`) and the metapackage. Never merge a release PR
+   whose Release check is red: it is not a required status check, since it
+   would fail every other PR into `main`.
+4. Merge it. The Release workflow then tags `main`'s merge commit `X.Y.Z`
+   (no `v` prefix), publishes the GitHub release (notes generated from the
+   merged pull requests since the previous tag, headed by the huri-core and
+   huri-cli refs it was tested against; edit them afterwards if needed), and
+   waits for a maintainer to approve the `pypi` environment before uploading
+   every package whose version is not on PyPI yet, then the metapackage. It
+   ends by installing `huri-modules[events,hub]==X.Y.Z` from PyPI and checking
+   the versions. PyPI never accepts a version twice. A failed upload: "Re-run
+   failed jobs" on that run; or, while `main` is still at the release commit,
+   run the Release workflow by hand on `main`.
 5. On `dev`, leave `HURI_CORE_REF` at the released core tag (and
    `HURI_CLI_REF` at its tag, or set it back to huri-cli's `dev`). Do **not** set
    it back to `dev` on its own: core `dev` is bumped to the next minor's
@@ -167,6 +184,48 @@ after the huri-core release they target is tagged:
 
 A patch release (`0.1.1`) is the same without step 1's range changes: fixes
 only, against the same huri-core minor.
+
+### Publishing setup (once)
+
+The Release workflow uploads with PyPI's trusted publishing: no token is
+stored. Each of these PyPI projects has, on pypi.org (Manage → Publishing), a
+GitHub publisher with owner `Lucy-Robotics`, repository `huri-modules`,
+workflow `release.yml` and environment `pypi`:
+
+- `huri-modules` (the metapackage), `huri-events` and `huri-hub`;
+- every `huri-module-*` under `packages/` (`huri-module-emo`, `-mov`, `-rag`,
+  `-stt`, `-tag`, `-tts`, `-vad` today).
+
+A package that is not on PyPI yet needs a *pending* publisher (pypi.org →
+Your account → Publishing, same values, with the project name) before the
+release that first uploads it; the release PR's summary marks such rows "new
+project". PyPI allows **one** pending GitHub publisher at a time for this
+owner, repository, workflow and environment, so a release with several new
+projects goes one at a time:
+
+1. register the pending publisher for one new project, merge the release PR;
+2. the run uploads that project, then fails at the next new one (after the
+   tag, the GitHub release and the packages before it are out);
+3. register the pending publisher of that project (the first one is now a
+   normal publisher), then run **Release** by hand on `main` (it resumes);
+4. repeat until the metapackage is uploaded.
+
+Do not upload a new package by hand beforehand: the plan would then block it
+as "changed without a version bump".
+
+The repository's `pypi` environment, created before any publisher, requires a
+maintainer's approval and only accepts `main`. If the repository moves to
+another GitHub owner, add the new publisher to each project and remove the old
+one.
+
+By hand, if the workflow cannot run: create the tag on `main`'s merge commit
+and the GitHub release first if the workflow did not. Build each package whose
+version is not on PyPI yet into `dist/packages`
+(`python -m build -o dist/packages packages/<pkg>`) and the metapackage into
+`dist/meta` (`python -m build -o dist/meta meta`), then
+`twine check --strict dist/packages/* dist/meta/*`,
+`twine upload --skip-existing dist/packages/*`, and only then
+`twine upload dist/meta/*` (the metapackage pins the packages).
 
 ## Verified third-party modules
 

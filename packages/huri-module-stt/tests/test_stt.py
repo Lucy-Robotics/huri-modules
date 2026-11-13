@@ -1,6 +1,7 @@
 import asyncio
 
 import numpy as np
+import pytest
 from huri_events.speech import Transcript, Voice
 
 from huri_core.testing import LocalHandle, ModuleHarness
@@ -21,12 +22,15 @@ class FakeWhisper:
         return self.texts.pop(0)
 
 
-def _stt(whisper):
+def _stt(whisper, handle=None):
     from huri_stt.module import STT
 
     # 20 ms blocks -> window 10 frames, step 5 frames (fast tests).
     return ModuleHarness(
-        STT, handle=LocalHandle(whisper), transcribe_window=0.2, transcribe_step=0.1
+        STT,
+        handle=handle or LocalHandle(whisper),
+        transcribe_window=0.2,
+        transcribe_step=0.1,
     )
 
 
@@ -132,5 +136,41 @@ def test_short_utterance_below_one_window_is_still_transcribed():
         assert out == []
         out = await stt.feed(Voice(None))
         assert out == [Transcript("yes", True)]
+
+    asyncio.run(run())
+
+
+def test_an_interrupted_stt_request_stops_on_the_replica():
+    class RayResponse:
+        """Like Ray's response: awaiting it waits for ever; cancel() is recorded."""
+
+        cancel_called = False
+
+        def __await__(self):
+            return asyncio.get_running_loop().create_future().__await__()
+
+        def cancel(self):
+            self.cancel_called = True
+
+    class RayHandle:
+        def __init__(self):
+            self.started = asyncio.Event()
+            self.response = RayResponse()
+            self.transcribe = self
+
+        def remote(self, audio, language):
+            self.started.set()
+            return self.response
+
+    async def run():
+        handle = RayHandle()
+        stt = _stt(None, handle)
+        await _feed(stt, 9)
+        task = asyncio.create_task(stt.feed(_voice()))
+        await handle.started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert handle.response.cancel_called
 
     asyncio.run(run())

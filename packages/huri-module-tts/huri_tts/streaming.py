@@ -98,6 +98,7 @@ class StreamingTTS(ModuleWithHandle):
                 data=np.array([], dtype=np.float32), sample_rate=sample_rate, end=True
             )
         finally:
+            stream_task.cancel()  # interrupted: stop draining; no-op after a normal end
             async with self._push_lock:
                 self._session_id = None
                 self._audio_q = None
@@ -122,6 +123,10 @@ class StreamingTTS(ModuleWithHandle):
                     f"pts={audio.pts:.3f}s next={pts:.3f}s",
                 )
                 await audio_q.put(audio)
+        except asyncio.CancelledError:
+            # Ray Serve does not pass a caller's cancel on to the replica.
+            response.cancel()
+            raise
         except Exception as e:
             print(f"[TTS-client] [{session_id}] drain task FAILED: {e!r}")
             raise
