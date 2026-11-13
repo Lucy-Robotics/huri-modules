@@ -42,10 +42,17 @@ def import_failure(target: str, hidden: Iterable[str], path: Iterable[str] = ())
     """Imports `target` ("pkg.module:Class") in a fresh interpreter where the
     `hidden` libraries cannot be imported; returns the error, or ""."""
     module, attr = target.split(":")
+    # An import hook, not `sys.modules[name] = None`: a library that tests
+    # `name in sys.modules` (scipy does for torch) must see it as absent.
     code = (
         "import importlib, sys\n"
         + "".join(f"sys.path.insert(0, {p!r})\n" for p in path)
-        + "".join(f"sys.modules[{name!r}] = None\n" for name in hidden)
+        + f"HIDDEN = {sorted(hidden)!r}\n"
+        + "class Hide:\n"
+        + "    def find_spec(self, name, path=None, target=None):\n"
+        + "        if name.partition('.')[0] in HIDDEN:\n"
+        + "            raise ModuleNotFoundError(f'{name} is hidden', name=name)\n"
+        + "sys.meta_path.insert(0, Hide())\n"
         + f"getattr(importlib.import_module({module!r}), {attr!r})\n"
     )
     res = subprocess.run(
@@ -75,6 +82,19 @@ def test_a_model_library_imported_at_the_top_of_a_module_file_fails_ci(tmp_path)
     target = "huri_stt_lazy_check.module:STT"
     error = import_failure(target, ["faster_whisper"], [str(tmp_path)])
     assert target in error and "faster_whisper" in error
+
+
+def test_a_library_that_checks_sys_modules_still_imports(tmp_path):
+    # scipy does `"torch" in sys.modules`, then uses it: a hidden library must
+    # stay out of sys.modules, or scipy fails when torch is hidden.
+    package = tmp_path / "huri_lips_lazy_check"
+    package.mkdir()
+    (package / "__init__.py").write_text("")
+    (package / "module.py").write_text(
+        "import sys\n\nassert 'torch' not in sys.modules\n\n\nclass Lips: ...\n"
+    )
+    target = "huri_lips_lazy_check.module:Lips"
+    assert not import_failure(target, ["torch"], [str(tmp_path)])
 
 
 def test_every_curated_module_lists_its_model_libraries():
