@@ -11,12 +11,6 @@ import httpx
 from huri_events.question import RAGQuestion
 from huri_events.text import Token
 from pydantic import BaseModel
-from qdrant_client.models import (
-    FieldCondition,
-    Filter,
-    MatchValue,
-    PointStruct,
-)
 from ray import serve
 from ray.serve import handle
 
@@ -252,6 +246,9 @@ class RAGHandle:
         """
         Always-on facts about the user (name, etc.).
         """
+
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+
         try:
             points, _ = self._qdrant.scroll(
                 collection_name=collection,
@@ -323,6 +320,9 @@ class RAGHandle:
     def _search_memories(self, query_vector: list[float], _user_id: str) -> list[str]:
         """Retrieve, re-rank (relevance+recency+importance), reinforce, return
         texts dated and oldest first, for the LLM to prefer the latest."""
+
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+
         try:
             hits = self._qdrant.query_points(
                 collection_name=self._cfg.memory_collection,
@@ -527,6 +527,8 @@ class RAGHandle:
         so a confused LLM changes nothing rather than corrupting memories.
         """
 
+        from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
+
         cfg = self._cfg
         try:
             hits = self._qdrant.query_points(
@@ -625,6 +627,8 @@ class RAGHandle:
         return None
 
     def _mark_maintenance_done(self, vector_size: int) -> None:
+        from qdrant_client.models import PointStruct
+
         self._qdrant.upsert(
             collection_name=self._cfg.memory_collection,
             points=[
@@ -685,6 +689,8 @@ class RAGHandle:
         collection: str,
         filters: dict | None = None,
     ) -> list[dict]:
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+
         qdrant_filter: Any = None
         if filters:
             must: Any = []

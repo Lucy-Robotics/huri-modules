@@ -14,8 +14,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # The import names of each curated module's model libraries: they may only be
 # imported inside its functions (its deployment), never at the top of a file.
-# qdrant_client is not one: it is a light HTTP client RAG imports at the top
-# of rag.py, memory_maintenance.py and qdrant_utils.py.
 MODEL_LIBRARIES: Dict[str, Tuple[str, ...]] = {
     "vad": (),
     "stt": ("faster_whisper",),
@@ -25,7 +23,7 @@ MODEL_LIBRARIES: Dict[str, Tuple[str, ...]] = {
     "emo_react": (),
     "emo_out": ("torch", "transformers"),
     "qag": (),
-    "rag": ("sentence_transformers",),
+    "rag": ("sentence_transformers", "qdrant_client"),
     "mov": ("torch", "transformers", "librosa"),
     "tts": ("piper",),
     "tts_cosyvoice": ("torch", "torchaudio"),
