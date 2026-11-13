@@ -14,7 +14,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # The import names of each curated module's model libraries: they may only be
 # imported inside its functions (its deployment), never at the top of a file.
-
 MODEL_LIBRARIES: Dict[str, Tuple[str, ...]] = {
     "vad": (),
     "stt": ("faster_whisper",),
