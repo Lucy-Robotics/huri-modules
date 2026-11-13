@@ -93,7 +93,7 @@ else
 fi
 
 prepare_workdir() { # prepare_workdir <target> -> echoes the path
-  local target="$1" dir="$WORK_BASE/$target"
+  local target="$1" local dir="$WORK_BASE/$target"
   # Guard the rm: this runs unattended and HURI_TEST_WORKDIR is user-supplied.
   # Refuse anything that is not a scratch path we would have created ourselves.
   case "$dir" in
