@@ -150,7 +150,7 @@ rejected with a `session_error` naming both sets.
 | [`huri-module-vad`](packages/huri-module-vad) | `vad` | detects speech in microphone frames (WebRTC VAD) |
 | [`huri-module-stt`](packages/huri-module-stt) | `stt` | transcribes speech with faster-whisper (CPU or GPU) |
 | [`huri-module-tag`](packages/huri-module-tag) | `tag` | stitches overlapping transcript passes into one sentence |
-| [`huri-module-emo`](packages/huri-module-emo) | `emo`, `eag` | estimates the emotion of speech from its prosody, and aggregates it over an utterance |
+| [`huri-module-emo`](packages/huri-module-emo) | `emo`, `eag`, `emo_react`, `emo_out` | estimates the emotion of speech from its prosody, and aggregates it over an utterance; decides the emotion HuRI expresses (`huri.emotion.out`): a reaction to the user's emotion, then the emotion of each sentence of the reply |
 | [`huri-module-rag`](packages/huri-module-rag) | `rag`, `qag` | answers from memory with an LLM, streaming tokens, told how the user sounded; joins a transcript and its emotion into a question, without waiting for the emotion (`mode: parallel`, the default) or after it (`sequential`); ingestion and memory tools |
 | [`huri-module-mov`](packages/huri-module-mov) | `mov` | SMPL-X co-speech gestures (EMAGE, vendored model code) |
 | [`huri-module-tts`](packages/huri-module-tts) | `tts`, `tts_cosyvoice` | speaks the reply: `tts` is the default engine, Piper (ONNX, any CPU; extra `piper`); `tts_cosyvoice` clones a voice with CosyVoice3 (NVIDIA; extra `cosyvoice`), wired instead of `tts` |

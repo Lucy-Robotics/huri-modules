@@ -6,6 +6,7 @@
 | huri.voice              | Voice             | json   |
 | huri.transcript         | Transcript        | json   |
 | huri.emotion            | Emotion           | json   |
+| huri.emotion.out        | Expression        | json   |
 | huri.partial_question   | PartialQuestion   | json   |
 | huri.question           | RAGQuestion       | json   |
 | huri.token              | Token             | json   |
@@ -19,7 +20,7 @@ while the user speaks.
 """
 
 from huri_events.audio import Audio
-from huri_events.emotion import Emotion
+from huri_events.emotion import Emotion, Expression
 from huri_events.face import FaceWeights
 from huri_events.motion import Motion
 from huri_events.question import PartialQuestion, RAGQuestion
@@ -29,6 +30,7 @@ from huri_events.text import Token
 __all__ = [
     "Audio",
     "Emotion",
+    "Expression",
     "FaceWeights",
     "Motion",
     "PartialQuestion",

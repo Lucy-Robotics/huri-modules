@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "huri-module-emo"
-version = "0.2.1"
-description = "HuRI module: Speech emotion from prosody (wav2vec2 classifier), and its aggregator"
+version = "0.3.0"
+description = "HuRI module: Speech emotion from prosody (wav2vec2 classifier), its aggregator, and the emotion HuRI expresses"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "huri-core[server]>=0.4,<0.5",
-  "huri-events>=0.1,<0.4",
+  "huri-events>=0.3,<0.4",
   "numpy>=1.26,<2",
 ]
 
@@ -22,12 +22,15 @@ model = ["torch", "transformers>=4.46"]
 [project.entry-points."huri.modules"]
 emo = "huri_emo.module:EMO"
 eag = "huri_emo.aggregator:EAG"
+emo_react = "huri_emo.react:EmoReact"
+emo_out = "huri_emo.out:EmoOut"
 
 # The extra each module needs: read by huri-modules' tooling
 # (scripts/module_requirements.py, check_registry.py against registry.toml's
 # `extra`), not by huri-core.
 [tool.huri-modules.extras]
 emo = "model"
+emo_out = "model"
 
 [tool.setuptools.packages.find]
 include = ["huri_emo*"]

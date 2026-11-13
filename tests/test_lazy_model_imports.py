@@ -22,6 +22,8 @@ MODEL_LIBRARIES: Dict[str, Tuple[str, ...]] = {
     "tag": (),
     "emo": ("torch", "transformers"),
     "eag": (),
+    "emo_react": (),
+    "emo_out": ("torch", "transformers"),
     "qag": (),
     "rag": ("sentence_transformers",),
     "mov": ("torch", "transformers", "librosa"),

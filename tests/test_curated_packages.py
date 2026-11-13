@@ -63,6 +63,8 @@ def test_each_curated_module_lives_in_exactly_one_package():
         "tag",
         "emo",
         "eag",
+        "emo_react",
+        "emo_out",
         "qag",
         "rag",
         "mov",
@@ -103,6 +105,7 @@ def test_tts_installs_no_engine_without_its_extra():
     "package,light,heavy",
     [
         ("huri-module-emo", "eag", {"torch", "transformers"}),
+        ("huri-module-emo", "emo_react", {"torch", "transformers"}),
         ("huri-module-rag", "qag", {"qdrant-client", "sentence-transformers"}),
     ],
 )
