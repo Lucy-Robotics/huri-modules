@@ -48,6 +48,15 @@ verified = 2026-10-12
 source = { path = "packages/huri-module-emo" }
 
 [[module]]
+name = "lips"
+package = "huri-module-lips-sync"
+summary = "Lip sync: ARKit blend shapes in step with the voice (LAM Audio2Expression), GPU or CPU"
+huri_core = ">=0.4,<0.5"
+verified = 2026-11-10
+source = { path = "packages/huri-module-lips-sync" }
+extra = "lam"
+
+[[module]]
 name = "mov"
 package = "huri-module-mov"
 summary = "Generates SMPL-X gestures matching the speech (EMAGE)"
@@ -98,12 +107,54 @@ source = { path = "packages/huri-module-tts" }
 extra = "cosyvoice"
 
 [[module]]
+name = "think"
+package = "huri-module-think"
+summary = "Moves like someone thinking until the answer starts (generated SMPL-X)"
+huri_core = ">=0.4,<0.5"
+verified = 2026-11-10
+source = { path = "packages/huri-module-think" }
+
+[[module]]
+name = "think_say"
+package = "huri-module-think"
+summary = "Thinks aloud (\"hmm...\", \"let me think\") in the TTS's Piper voice until the answer starts"
+huri_core = ">=0.4,<0.5"
+verified = 2026-11-10
+source = { path = "packages/huri-module-think" }
+extra = "piper"
+
+[[module]]
+name = "think_token"
+package = "huri-module-think"
+summary = "Silences think_say once the answer is being written (its voice comes soon)"
+huri_core = ">=0.4,<0.5"
+verified = 2026-11-10
+source = { path = "packages/huri-module-think" }
+
+[[module]]
+name = "think_stop"
+package = "huri-module-think"
+summary = "Ends the thinking of think and think_say when the answer is heard"
+huri_core = ">=0.4,<0.5"
+verified = 2026-11-10
+source = { path = "packages/huri-module-think" }
+
+[[module]]
 name = "tts"
 package = "huri-module-tts"
 summary = "Speaks the reply with Piper (ONNX, CPU, ~30x realtime)"
 huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 source = { path = "packages/huri-module-tts" }
+extra = "piper"
+
+[[module]]
+name = "tts_phonemes"
+package = "huri-module-lips-sync"
+summary = "Piper text to speech whose audio carries its phoneme timings, for exact lip sync"
+huri_core = ">=0.4,<0.5"
+verified = 2026-11-10
+source = { path = "packages/huri-module-lips-sync" }
 extra = "piper"
 
 [[module]]

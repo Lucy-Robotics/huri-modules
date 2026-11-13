@@ -1,0 +1,5 @@
+# Hardware pins of module lips (huri-module-lips-sync) on CPU. torch comes from the CPU index the installer uses first.
+# Installed by scripts/install_local.sh through scripts/module_requirements.py.
+transformers==4.51.3
+scipy>=1.11
+numpy==1.26.4

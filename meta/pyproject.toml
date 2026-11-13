@@ -19,22 +19,28 @@ dependencies = []
 [project.optional-dependencies]
 # One extra per registry.toml module (name with "_" as "-"):
 # "<package>[<registry extra>]==<package version>".
-vad = ["huri-module-vad==0.2.0"]
+vad = ["huri-module-vad==0.2.1"]
 stt = ["huri-module-stt==0.2.1"]
-tag = ["huri-module-tag==0.2.0"]
-emo = ["huri-module-emo[model]==0.2.0"]
-eag = ["huri-module-emo==0.2.0"]
+tag = ["huri-module-tag==0.2.1"]
+emo = ["huri-module-emo[model]==0.2.1"]
+eag = ["huri-module-emo==0.2.1"]
 rag = ["huri-module-rag[rag]==0.2.1"]
 qag = ["huri-module-rag==0.2.1"]
 tts = ["huri-module-tts[piper]==0.2.1"]
 # The module only: CosyVoice itself is not pip-installable (install.sh adds it).
 tts-cosyvoice = ["huri-module-tts[cosyvoice]==0.2.1"]
-mov = ["huri-module-mov==0.2.0"]
+mov = ["huri-module-mov==0.2.1"]
+think = ["huri-module-think==0.1.0"]
+think-say = ["huri-module-think[piper]==0.1.0"]
+think-token = ["huri-module-think==0.1.0"]
+think-stop = ["huri-module-think==0.1.0"]
+lips = ["huri-module-lips-sync[lam]==0.1.0"]
+tts-phonemes = ["huri-module-lips-sync[piper]==0.1.0"]
 # Not modules: the event vocabulary alone, and `huri hub`.
-events = ["huri-events==0.2.0"]
+events = ["huri-events==0.3.0"]
 hub = ["huri-hub==0.2.0"]
 # Every module a pip install completes (all but tts-cosyvoice), and huri hub.
-all = ["huri-modules[vad,stt,tag,emo,eag,rag,qag,tts,mov,hub]"]
+all = ["huri-modules[vad,stt,tag,emo,eag,rag,qag,tts,mov,think,think-say,think-token,think-stop,lips,tts-phonemes,hub]"]
 
 [project.urls]
 Homepage = "https://github.com/Lucy-Robotics/huri-modules"

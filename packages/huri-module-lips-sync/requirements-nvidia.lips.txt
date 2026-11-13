@@ -1,0 +1,8 @@
+# Hardware pins of module lips (huri-module-lips-sync) on NVIDIA. torch from the CUDA 12.1 index.
+# Installed by scripts/install_local.sh through scripts/module_requirements.py.
+torch==2.3.1
+transformers==4.51.3
+onnx==1.16.0
+onnxruntime==1.18.0
+scipy>=1.11
+numpy==1.26.4

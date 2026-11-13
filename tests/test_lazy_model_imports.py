@@ -27,6 +27,27 @@ MODEL_LIBRARIES: Dict[str, Tuple[str, ...]] = {
     "mov": ("torch", "transformers", "librosa"),
     "tts": ("piper",),
     "tts_cosyvoice": ("torch", "torchaudio"),
+    "lips": (
+        "torch",
+        "transformers",
+        "onnx",
+        "onnxruntime",
+        "huggingface_hub",
+        "scipy",
+    ),
+    "tts_phonemes": (
+        "piper",
+        "torch",
+        "transformers",
+        "onnx",
+        "onnxruntime",
+        "huggingface_hub",
+        "scipy",
+    ),
+    "think": (),
+    "think_say": ("piper",),
+    "think_token": (),
+    "think_stop": (),
 }
 
 
