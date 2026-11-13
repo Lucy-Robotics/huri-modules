@@ -27,6 +27,12 @@ MODEL_LIBRARIES: Dict[str, Tuple[str, ...]] = {
     "mov": ("torch", "transformers", "librosa"),
     "tts": ("piper",),
     "tts_cosyvoice": ("torch", "torchaudio"),
+    "lips": ("torch", "transformers", "onnxruntime"),
+    "tts_phonemes": ("piper",),
+    "think": (),
+    "think_say": ("piper",),
+    "think_token": (),
+    "think_stop": (),
 }
 
 
@@ -43,9 +49,14 @@ def import_failure(target: str, hidden: Iterable[str], path: Iterable[str] = ())
     `hidden` libraries cannot be imported; returns the error, or ""."""
     module, attr = target.split(":")
     code = (
-        "import importlib, sys\n"
+        "import importlib, importlib.abc, sys\n"
         + "".join(f"sys.path.insert(0, {p!r})\n" for p in path)
-        + "".join(f"sys.modules[{name!r}] = None\n" for name in hidden)
+        + f"hidden = {sorted(hidden)!r}\n"
+        + "class Hidden(importlib.abc.MetaPathFinder):\n"
+        + "    def find_spec(self, name, path=None, target=None):\n"
+        + "        if name.split('.')[0] in hidden:\n"
+        + "            raise ModuleNotFoundError(f'No module named {name!r}')\n"
+        + "sys.meta_path.insert(0, Hidden())\n"
         + f"getattr(importlib.import_module({module!r}), {attr!r})\n"
     )
     res = subprocess.run(
