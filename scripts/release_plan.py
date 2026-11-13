@@ -230,15 +230,17 @@ def main(pypi: OnPyPI = on_pypi, project: ProjectOnPyPI = project_on_pypi) -> in
 
     # A package that is not in the previous release counts as changed; with no
     # previous release, every package does.
-    changed = (
-        [
+    if version in tags:
+        # `previous` is then the release before it: only the tag error is real.
+        changed: List[str] = []
+    elif previous:
+        changed = [
             p.path
             for p in packages
             if _git("diff", "--quiet", previous, "HEAD", "--", p.path).returncode
         ]
-        if previous
-        else [p.path for p in packages]
-    )
+    else:
+        changed = [p.path for p in packages]
     found = problems(meta, packages, tags, pypi, changed, refs)
     if found:
         for problem in found:
@@ -280,7 +282,7 @@ def main(pypi: OnPyPI = on_pypi, project: ProjectOnPyPI = project_on_pypi) -> in
                 "| what | action |",
                 "|---|---|",
                 f"| tag `{version}` on main's merge commit | create |",
-                f"| GitHub release `{version}` | publish, marked latest |",
+                f"| GitHub release `{version}` | publish |",
                 *rows,
                 *warning,
             ]

@@ -92,7 +92,7 @@ jobs:
         # --notes comes first, the generated notes follow it.
         run: |
           gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" --title "huri-modules $VERSION" --latest \
+            --target "$GITHUB_SHA" --title "huri-modules $VERSION" \
             --notes "Built and tested against huri-core $CORE and HuRI-CLI $CLI." \
             --generate-notes ${PREVIOUS:+--notes-start-tag "$PREVIOUS"}
 
@@ -123,13 +123,13 @@ jobs:
       # publisher fails the first step, and the metapackage then waits for the
       # resume (RELEASING.md, "Publishing setup").
       - name: the packages
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
         with:
           packages-dir: dist/packages/
           skip-existing: true
       # After the packages: the metapackage pins them.
       - name: the metapackage
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
         with:
           packages-dir: dist/meta/
           skip-existing: true

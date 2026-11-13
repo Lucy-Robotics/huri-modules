@@ -186,7 +186,7 @@ def test_the_release_pr_shows_what_merging_it_will_publish(repo, monkeypatch):
     rows = [line for line in summary.splitlines() if line.startswith("| ")]
     assert rows[1:] == [
         "| tag `0.3.0` on main's merge commit | create |",
-        "| GitHub release `0.3.0` | publish, marked latest |",
+        "| GitHub release `0.3.0` | publish |",
         "| PyPI `huri-events 0.3.0` | upload |",
         "| PyPI `huri-hub 0.2.0` | already on PyPI, skipped |",
         "| PyPI `huri-module-lips-sync 0.1.0` | upload (new project: needs its "
@@ -257,6 +257,8 @@ def test_a_blocked_release_pr_fails(repo, monkeypatch):
     code, out, summary = run(repo, monkeypatch, "pull_request")  # 0.2.0, tagged
     assert code == 1 and out == {"release": "false"}
     assert "tag 0.2.0 already exists" in summary
+    # Compared to 0.1.0, every package changed: not this release's problem.
+    assert "changed without a version bump" not in summary
 
 
 def test_versions_env_on_dev_blocks_the_release_pr(repo, monkeypatch):
