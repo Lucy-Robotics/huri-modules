@@ -48,7 +48,7 @@ case "$variant" in
     exit 2
     ;;
 esac
-pins="requirements-$variant.txt"
+pins="requirements-$variant.lips.txt"
 [[ -f "$pins" ]] || { echo "missing $pins" >&2; exit 1; }
 echo "installing for: $variant"
 
@@ -65,7 +65,7 @@ fi
 if grep -qvE '^\s*(#|$)' "$pins"; then
   $pip install -r "$pins"
 fi
-$pip install -e ../huri-events -e ".[dev]"
+$pip install -e ../huri-events -e "../huri-module-tts[piper]" -e ".[lam,piper,dev]"
 
 if ((models)); then
   python="${PYTHON:-python}"

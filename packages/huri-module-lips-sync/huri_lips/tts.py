@@ -54,11 +54,13 @@ class PhonemeTTSHandle(_PiperTTS):
                 for samples, phonemes in chunks:
                     if samples.size == 0:
                         continue
-                    audio = Audio(
-                        data=samples, sample_rate=self._sample_rate, end=False, pts=pts
+                    yield Audio(
+                        data=samples,
+                        sample_rate=self._sample_rate,
+                        end=False,
+                        pts=pts,
+                        phonemes=phonemes,
                     )
-                    setattr(audio, "phonemes", phonemes)
-                    yield audio
                     pts += samples.size / self._sample_rate
         except Exception:
             traceback.print_exc()

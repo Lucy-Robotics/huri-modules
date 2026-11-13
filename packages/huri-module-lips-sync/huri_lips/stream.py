@@ -3,7 +3,6 @@ from typing import Callable, List, Optional, Tuple
 import numpy as np
 from huri_events.face import ARKIT_INDEX, ARKIT_NAMES, N_SHAPES
 from huri_lips.config import FPS, SAMPLE_RATE, WINDOW_FRAMES, WINDOW_SAMPLES
-from scipy.signal import resample_poly, savgol_filter
 
 Infer = Callable[[np.ndarray], np.ndarray]
 
@@ -31,6 +30,8 @@ def to_16k(samples: np.ndarray, sample_rate: int) -> np.ndarray:
     samples = np.asarray(samples, dtype=np.float32).reshape(-1)
     if sample_rate == SAMPLE_RATE or samples.size == 0:
         return samples
+    from scipy.signal import resample_poly
+
     g = np.gcd(int(sample_rate), SAMPLE_RATE)
     return resample_poly(samples, SAMPLE_RATE // g, int(sample_rate) // g).astype(
         np.float32
@@ -80,6 +81,8 @@ class Smoother:
         self._close_in_silence(x, loud, done)
         self._ease_in(x, done)
         if self.savgol > 2 and x.shape[0] >= self.savgol:
+            from scipy.signal import savgol_filter
+
             x[done:] = np.clip(
                 savgol_filter(x, self.savgol, 2, axis=0, mode="mirror")[done:], 0, 1
             )

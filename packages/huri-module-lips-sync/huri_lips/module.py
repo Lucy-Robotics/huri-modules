@@ -82,7 +82,7 @@ class Lips(ModuleWithHandle):
         self._lock = asyncio.Lock()
 
     async def process(self, audio: Audio) -> AsyncGenerator[FaceWeights, None]:
-        phonemes = getattr(audio, "phonemes", None)
+        phonemes = audio.phonemes
         if phonemes is not None:
             if audio.data.size:
                 yield self._from_phonemes(audio, phonemes)

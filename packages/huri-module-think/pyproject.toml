@@ -11,18 +11,16 @@ requires-python = ">=3.10"
 dependencies = [
   "huri-core[server]>=0.4,<0.5",
   "huri-events>=0.1,<0.4",          # the curated events it consumes and emits
-  "numpy>=1.26",
-  "piper-tts>=1.8,<1.9",
+  "numpy>=1.26,<2",
 ]
 
-# Edit these: point them at your module's repository (pip and package indexes
-# show them to whoever installs the module).
 [project.urls]
-Homepage = "https://github.com/your-org/huri-module-think"
-Repository = "https://github.com/your-org/huri-module-think"
-Issues = "https://github.com/your-org/huri-module-think/issues"
+Homepage = "https://github.com/Lucy-Robotics/huri-modules/tree/main/packages/huri-module-think"
+Repository = "https://github.com/Lucy-Robotics/huri-modules"
+Issues = "https://github.com/Lucy-Robotics/huri-modules/issues"
 
 [project.optional-dependencies]
+piper = ["piper-tts>=1.8,<1.9"]
 # flake8-pyproject: flake8 alone does not read [tool.flake8] below.
 dev = ["pytest>=8", "black>=24", "isort>=5", "flake8>=7", "flake8-pyproject>=1.2"]
 
@@ -33,6 +31,9 @@ think = "huri_think.module:Think"
 think_say = "huri_think.module:ThinkSay"
 think_token = "huri_think.module:ThinkToken"
 think_stop = "huri_think.module:ThinkStop"
+
+[tool.huri-modules.extras]
+think_say = "piper"
 
 [tool.setuptools.packages.find]
 include = ["huri_think*"]
