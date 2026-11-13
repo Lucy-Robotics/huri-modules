@@ -111,7 +111,7 @@ def new_modules(tmp_path, monkeypatch):
             summary = "The answer as subtitles"
             input = {{ topic = "huri.token", event = "huri_events.text:Token" }}
             output = {{ topic = "acme.subtitle", event = "acme_subtitles:Subtitle" }}
-            events = ["huri-events>=0.1,<0.3"]
+            events = ["huri-events>=0.1,<0.4"]
             requires = {{ gpu = false, actuation = false }}
             huri_core = {curated_core_range()}
             """))

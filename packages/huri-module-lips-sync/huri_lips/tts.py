@@ -2,7 +2,7 @@ import asyncio
 import os
 import traceback
 from pathlib import Path
-from typing import AsyncGenerator, List, Optional, Tuple
+from typing import Any, AsyncGenerator, List, Optional, Tuple
 
 import numpy as np
 from huri_events.audio import Audio
@@ -17,8 +17,11 @@ def aligned_voice(voice: str = _VOICE_PATH) -> Path:
     return models_dir() / (Path(voice).stem + ".aligned.onnx")
 
 
+_PiperTTS: Any = getattr(PiperTTSHandle, "func_or_class")
+
+
 @serve.deployment(name="PhonemeTTSHandle")
-class PhonemeTTSHandle(PiperTTSHandle.func_or_class):
+class PhonemeTTSHandle(_PiperTTS):
     def __init__(
         self,
         voice_path: Optional[str] = None,
@@ -51,11 +54,13 @@ class PhonemeTTSHandle(PiperTTSHandle.func_or_class):
                 for samples, phonemes in chunks:
                     if samples.size == 0:
                         continue
-                    audio = Audio(
-                        data=samples, sample_rate=self._sample_rate, end=False, pts=pts
+                    yield Audio(
+                        data=samples,
+                        sample_rate=self._sample_rate,
+                        end=False,
+                        pts=pts,
+                        phonemes=phonemes,
                     )
-                    audio.phonemes = phonemes
-                    yield audio
                     pts += samples.size / self._sample_rate
         except Exception:
             traceback.print_exc()
@@ -67,18 +72,20 @@ class PhonemeTTSHandle(PiperTTSHandle.func_or_class):
     def _synthesize(
         self, phrase: str
     ) -> List[Tuple[np.ndarray, Optional[List[Phoneme]]]]:
-        out = []
+        out: List[Tuple[np.ndarray, Optional[List[Phoneme]]]] = []
         for chunk in self._voice.synthesize(
             phrase, syn_config=self._syn_config, include_alignments=True
         ):
             samples = np.asarray(chunk.audio_float_array, dtype=np.float32)
-            phonemes = None
+            phonemes: Optional[List[Phoneme]] = None
             if chunk.phoneme_alignments:
-                phonemes, t = [], 0.0
+                marks: List[Phoneme] = []
+                t = 0.0
                 for a in chunk.phoneme_alignments:
                     d = a.num_samples / chunk.sample_rate
-                    phonemes.append((a.phoneme, t, t + d))
+                    marks.append((a.phoneme, t, t + d))
                     t += d
+                phonemes = marks
             out.append((samples, phonemes))
         return out
 

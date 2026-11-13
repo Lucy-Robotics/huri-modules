@@ -97,16 +97,16 @@ def viseme_frames(
     for i in range(n):
         t = i / fps
         lo, hi = t - half, t + half
-        for v, a, b, closed in segments:
+        for index, a, b, closed in segments:
             overlap = min(hi, b) - max(lo, a)
             if overlap > 0:
-                out[i, v] += overlap
+                out[i, index] += overlap
         total = out[i].sum()
         if total <= 0:
             out[i, VISEME_INDEX["sil"]] = 1.0
         else:
             out[i] /= total
-    for v, a, b, closed in segments:
+    for index, a, b, closed in segments:
         if not closed:
             continue
         first = max(0, math.ceil(a * fps - 1e-9))
@@ -118,7 +118,7 @@ def viseme_frames(
         )
         for i in frames:
             out[i] *= 0.15
-            out[i, v] += 0.85
+            out[i, index] += 0.85
     return out
 
 

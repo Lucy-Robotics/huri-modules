@@ -48,7 +48,7 @@ python -m venv .venv && . .venv/bin/activate
 python -m pip install \
   "huri-core[server] @ git+https://github.com/Lucy-Robotics/huri-core.git@<ref>" \
   "huri-events @ git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=packages/huri-events"
-./install.sh             # picks requirements-{cpu,nvidia,amd}.txt, installs ../huri-events and the module,
+./install.sh             # picks requirements-{cpu,nvidia,amd}.lips.txt, installs ../huri-events, ../huri-module-tts and the module,
                          # downloads LAM's weights and, on a CPU, exports them to int8 ONNX
 pytest
 ```

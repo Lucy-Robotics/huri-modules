@@ -203,6 +203,7 @@ The installer, the Docker images and CI all read that one file
 | huri-modules | huri-core |
 |---|---|
 | 0.1.x | 0.4.x |
+| 0.2.x | 0.4.x |
 
 CI tests every change against the pinned core (blocking) and against
 huri-core's `dev` branch (non-blocking), so a breaking core change shows up
@@ -275,7 +276,7 @@ It generates:
 | Path                                             | What                                              |
 | ------------------------------------------------ | ------------------------------------------------- |
 | `config/huri_local.generated.yaml`               | Ray Serve config for this machine                 |
-| `config/client_local.generated.yaml`             | matching session, plus huri-cli's `cli:` section  |
+| `config/client_local.generated.yaml`             | matching session, `log:` (with vad), `cli:`    |
 | `.huri-local/huri.env`                           | the same runtime env vars as a plain `.env`       |
 | `.huri-local/secrets.env`                        | LLM API key, `0600`, never in the configs         |
 | `.huri-local/env.sh`                             | venv + `huri.env` + `secrets.env` in one `source` |
@@ -504,7 +505,7 @@ pip install "huri-core[server] @ $CORE" \
 From git, give huri-core, huri-events and huri-cli as git URLs on the same
 command line as what depends on them, so pip takes them from git and not from
 an index. Use release tags, a huri-core `0.4.x` with a
-huri-modules `0.1.x` (see [Versions](#versions-and-compatibility)); without a
+huri-modules `0.2.x` (see [Versions](#versions-and-compatibility)); without a
 ref pip takes the repository's default branch. `[server]` is Ray Serve + FastAPI and the pins that
 keep them working; each module package declares its own dependencies, and the
 GPU ones ship `requirements-<variant>[.<module>].txt` pins next to it.

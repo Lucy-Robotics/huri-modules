@@ -70,4 +70,4 @@ fi
 if grep -qvE '^\s*(#|$)' "$pins"; then
   $pip install -r "$pins"
 fi
-$pip install -e ".[dev]"
+$pip install -e ".[piper,dev]"

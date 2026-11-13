@@ -82,7 +82,7 @@ class Lips(ModuleWithHandle):
         self._lock = asyncio.Lock()
 
     async def process(self, audio: Audio) -> AsyncGenerator[FaceWeights, None]:
-        phonemes = getattr(audio, "phonemes", None)
+        phonemes = audio.phonemes
         if phonemes is not None:
             if audio.data.size:
                 yield self._from_phonemes(audio, phonemes)
@@ -110,6 +110,9 @@ class Lips(ModuleWithHandle):
         return FaceWeights(weights=weights, fps=FPS, pts=audio.pts, visemes=visemes)
 
     async def _run(self, final: bool) -> AsyncGenerator[FaceWeights, None]:
+        t0 = self._t0
+        if t0 is None:
+            return
         starts: List[int] = self._stream.plan(final)
         for i in range(0, len(starts), self._max_batch):
             batch = starts[i : i + self._max_batch]
@@ -118,7 +121,7 @@ class Lips(ModuleWithHandle):
             emitted = self._stream.emit(batch, weights)
             first = emitted[0][0]
             frames = np.concatenate([w for _, w in emitted])
-            pts = self._t0 + first / FPS + self._delay_s
+            pts = t0 + first / FPS + self._delay_s
             yield FaceWeights(weights=frames, fps=FPS, pts=pts)
         if final:
             self._stream.reset()

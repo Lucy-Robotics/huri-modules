@@ -2130,6 +2130,15 @@ client_config() {
   in_plan mov && subscribe+=(huri.motion)
   echo "subscribe: [$(IFS=,; echo "${subscribe[*]}" | sed 's/,/, /g')]"
   echo
+  if in_plan vad; then
+    echo "# Log levels of this session, honoured by huri-core >= 0.5 and ignored by"
+    echo "# older ones. Microphone audio arrives many times a second, so its traffic"
+    echo "# lines are quiet by default (warnings about the topic still show)."
+    echo "log:"
+    echo "  topics:"
+    echo "    huri.audio.in: WARNING"
+    echo
+  fi
   echo "# Device settings of the CLI client; the server never reads them."
   echo "cli:"
   echo "  audio_in:"

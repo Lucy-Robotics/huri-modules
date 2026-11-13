@@ -1,5 +1,0 @@
-# Hardware pins of huri-module-lips-sync on AMD/ROCm. torch comes from AMD's wheels, which the installer adds first.
-# Installed by scripts/install_local.sh through scripts/module_requirements.py.
-transformers==4.46.3
-scipy>=1.11
-numpy==1.26.4

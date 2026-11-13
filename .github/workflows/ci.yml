@@ -131,9 +131,7 @@ jobs:
       - run: isort --check-only packages tests check_registry.py scripts
       - run: flake8 packages tests check_registry.py scripts
       - name: mypy
-        # Not gating yet: packages/huri-module-rag/huri_rag/{semantic_chunker,ingestion}.py carry
-        # pre-existing errors. Remove `|| true` once those are fixed.
-        run: mypy packages --check-untyped-defs || true
+        run: mypy packages --check-untyped-defs
       - name: mypy (files that are already clean must stay clean)
         # --follow-imports=silent: report only on the files listed below.
         # The MOV package follows into gesture/emage/modeling.py, whose 3

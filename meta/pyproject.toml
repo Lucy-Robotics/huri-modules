@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 # tests/test_metapackage.py keeps it in step with registry.toml and packages/.
 [project]
 name = "huri-modules"
-version = "0.1.1"  # = the huri-modules release (RELEASING.md)
+version = "0.2.0"  # = the huri-modules release (RELEASING.md)
 description = "HuRI's curated modules: pick them with extras, e.g. huri-modules[vad,stt,tts]"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -19,27 +19,27 @@ dependencies = []
 [project.optional-dependencies]
 # One extra per registry.toml module (name with "_" as "-"):
 # "<package>[<registry extra>]==<package version>".
-vad = ["huri-module-vad==0.2.0"]
-stt = ["huri-module-stt==0.2.0"]
-tag = ["huri-module-tag==0.2.0"]
-emo = ["huri-module-emo[model]==0.2.0"]
-eag = ["huri-module-emo==0.2.0"]
-emo-react = ["huri-module-emo==0.2.0"]
-emo-out = ["huri-module-emo[model]==0.2.0"]
-rag = ["huri-module-rag[rag]==0.2.0"]
-qag = ["huri-module-rag==0.2.0"]
-tts = ["huri-module-tts[piper]==0.2.0"]
+vad = ["huri-module-vad==0.2.1"]
+stt = ["huri-module-stt==0.2.1"]
+tag = ["huri-module-tag==0.2.1"]
+emo = ["huri-module-emo[model]==0.3.0"]
+eag = ["huri-module-emo==0.3.0"]
+emo-react = ["huri-module-emo==0.3.0"]
+emo-out = ["huri-module-emo[model]==0.3.0"]
+rag = ["huri-module-rag[rag]==0.2.1"]
+qag = ["huri-module-rag==0.2.1"]
+tts = ["huri-module-tts[piper]==0.2.1"]
 # The module only: CosyVoice itself is not pip-installable (install.sh adds it).
-tts-cosyvoice = ["huri-module-tts[cosyvoice]==0.2.0"]
-mov = ["huri-module-mov==0.2.0"]
+tts-cosyvoice = ["huri-module-tts[cosyvoice]==0.2.1"]
+mov = ["huri-module-mov==0.2.1"]
 think = ["huri-module-think==0.1.0"]
-think-say = ["huri-module-think==0.1.0"]
+think-say = ["huri-module-think[piper]==0.1.0"]
 think-token = ["huri-module-think==0.1.0"]
 think-stop = ["huri-module-think==0.1.0"]
-lips = ["huri-module-lips-sync==0.1.0"]
-tts-phonemes = ["huri-module-lips-sync==0.1.0"]
+lips = ["huri-module-lips-sync[lam]==0.1.0"]
+tts-phonemes = ["huri-module-lips-sync[piper]==0.1.0"]
 # Not modules: the event vocabulary alone, and `huri hub`.
-events = ["huri-events==0.2.0"]
+events = ["huri-events==0.3.0"]
 hub = ["huri-hub==0.2.0"]
 # Every module a pip install completes (all but tts-cosyvoice), and huri hub.
 all = ["huri-modules[vad,stt,tag,emo,eag,emo-react,emo-out,rag,qag,tts,mov,think,think-say,think-token,think-stop,lips,tts-phonemes,hub]"]

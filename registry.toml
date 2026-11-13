@@ -71,6 +71,7 @@ summary = "Lip sync: ARKit blend shapes in step with the voice (LAM Audio2Expres
 huri_core = ">=0.4,<0.5"
 verified = 2026-11-10
 source = { path = "packages/huri-module-lips-sync" }
+extra = "lam"
 
 [[module]]
 name = "mov"
@@ -137,6 +138,7 @@ summary = "Thinks aloud (\"hmm...\", \"let me think\") in the TTS's Piper voice 
 huri_core = ">=0.4,<0.5"
 verified = 2026-11-10
 source = { path = "packages/huri-module-think" }
+extra = "piper"
 
 [[module]]
 name = "think_token"
@@ -170,6 +172,7 @@ summary = "Piper text to speech whose audio carries its phoneme timings, for exa
 huri_core = ">=0.4,<0.5"
 verified = 2026-11-10
 source = { path = "packages/huri-module-lips-sync" }
+extra = "piper"
 
 [[module]]
 name = "vad"
