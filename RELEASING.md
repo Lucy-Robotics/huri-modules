@@ -15,8 +15,13 @@ repositories they were all tested against together, in
 ### Package versions
 
 Each package (`packages/*`) keeps its own `version` in its
-`pyproject.toml`, bumped by the pull request that changes it (semver, per
-package):
+`pyproject.toml`, bumped once per release (semver, per package): by the first
+pull request that changes it after its last release, which also moves its pins
+in `meta/pyproject.toml`. Later pull requests before the release keep that
+version, unless they need a bigger bump than the pending one (a minor change
+raises a pending patch to the minor). A version is released once it is on
+PyPI; git tags name huri-modules releases, not package versions. The bump
+follows these rules:
 
 - `huri-events`: a change to a wire format, a topic or an event class's
   public fields is a **minor** bump while it is `0.x` (`0.1` → `0.2`), since
@@ -136,7 +141,9 @@ after the huri-core release they target is tagged:
      `huri_module.toml` and of each `registry.toml` entry (they must agree,
      `check_registry.py` checks it): `>=X.Y.0.dev0,<X.(Y+1)` becomes
      `>=X.Y,<X.(Y+1)`;
-   - bumps the version of every package that changed since the last release;
+   - bumps any package that changed since the last release but kept a version
+     already on PyPI (its pull requests should have bumped it, see
+     [Package versions](#package-versions));
    - sets `meta/pyproject.toml`'s `version` to `X.Y.Z` and its pins to the
      package versions (`tests/test_metapackage.py` checks the pins);
    - updates the compatibility table (here and in README.md).
