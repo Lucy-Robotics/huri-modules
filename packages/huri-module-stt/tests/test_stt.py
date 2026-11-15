@@ -174,3 +174,87 @@ def test_an_interrupted_stt_request_stops_on_the_replica():
         assert handle.response.cancel_called
 
     asyncio.run(run())
+
+
+async def _cancel_end_pass(stt, h):
+    """Start the end-of-turn pass, wait until it hangs in Whisper, cancel it."""
+
+    task = asyncio.create_task(stt.feed(Voice(None)))
+    await asyncio.wait_for(_until_called(h), 1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+async def _until_called(h):
+    while not h.calls:
+        await asyncio.sleep(0)
+
+
+def test_the_next_turns_transcript_holds_only_the_next_turn():
+    async def run():
+        h = FakeWhisper([], asyncio.Event())
+        stt = _stt(h)
+        await _feed(stt, 6)
+        await _cancel_end_pass(stt, h)
+        h.texts = ["what time is it"]
+        await _speak(stt, 3)
+        out = await asyncio.wait_for(stt.feed(Voice(None)), 1)
+        assert out == [Transcript("what time is it", True)]
+        assert h.calls[-1] == 3 * 4
+
+    asyncio.run(run())
+
+
+def test_a_cancelled_transcription_leaves_stt_ready_for_the_next_turn():
+    async def run():
+        h = FakeWhisper([], asyncio.Event())
+        stt = _stt(h)
+        await _feed(stt, 6)
+        await _cancel_end_pass(stt, h)
+        h.texts = ["a", "b", "c"]
+        assert await asyncio.wait_for(_speak(stt, 9), 1) == []
+        out = await asyncio.wait_for(stt.feed(_voice()), 1)
+        assert out == [Transcript("a", False)]
+        assert h.calls[-1] == 10 * 4
+
+    asyncio.run(run())
+
+
+def test_speech_heard_during_a_cancelled_transcription_is_kept_for_the_next_turn():
+    async def run():
+        h = FakeWhisper([], asyncio.Event())
+        stt = _stt(h)
+        await _feed(stt, 6)
+        task = asyncio.create_task(stt.feed(Voice(None)))
+        await asyncio.wait_for(_until_called(h), 1)
+        for _ in range(2):
+            assert await stt.feed(_voice()) == []
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        h.texts = ["what time is it"]
+        await _speak(stt, 1)
+        out = await asyncio.wait_for(stt.feed(Voice(None)), 1)
+        assert out == [Transcript("what time is it", True)]
+        assert h.calls[-1] == 3 * 4
+
+    asyncio.run(run())
+
+
+def test_a_cancelled_caption_window_keeps_the_turns_audio_for_the_final_transcript():
+    async def run():
+        h = FakeWhisper([], asyncio.Event())
+        stt = _stt(h)
+        await _speak(stt, 9)
+        task = asyncio.create_task(stt.feed(_voice()))
+        await asyncio.wait_for(_until_called(h), 1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        h.texts = ["whole turn"]
+        out = await asyncio.wait_for(stt.feed(Voice(None)), 1)
+        assert out == [Transcript("whole turn", True)]
+        assert h.calls == [10 * 4, 10 * 4]
+
+    asyncio.run(run())
