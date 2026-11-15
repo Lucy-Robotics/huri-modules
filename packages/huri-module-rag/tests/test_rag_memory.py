@@ -220,13 +220,90 @@ def test_a_session_ending_during_a_fold_saves_the_turns_being_folded():
         await fake.folding.wait()
         b.cancel()  # the client left: the server cancels the session's tasks
         await asyncio.gather(b, return_exceptions=True)
-        await harness.finalize()
+        await asyncio.wait_for(harness.finalize(), 1)
         return fake
 
     fake = asyncio.run(session())
     _, history, working = fake.saved
     assert [m["content"] for m in history] == ["a", "re: a", "b", "re: b"]
     assert not working
+
+
+def _turn(question):
+    return [
+        {"role": "user", "content": question},
+        {"role": "assistant", "content": f"re: {question}"},
+    ]
+
+
+def test_a_fold_survives_an_interruption_of_the_next_answer():
+    async def session():
+        fake = GatedLLM()
+        fake.answer_gate.set()
+        harness = _harness(fake, max_history_turns=1)
+        await _ask(harness, "a")
+        b = _ask(harness, "b")  # pushes "a" out: its fold waits
+        await asyncio.wait_for(fake.folding.wait(), 1)
+        b.cancel()  # the session interrupts "huri.token"
+        await asyncio.gather(b, return_exceptions=True)
+        fake.fold_gate.set()
+        await asyncio.wait_for(_ask(harness, "c"), 1)
+        await asyncio.wait_for(_ask(harness, "d"), 1)
+        return fake
+
+    fake = asyncio.run(session())
+    # "a" folded once, by the fold the interrupt did not stop
+    assert fake.folds == [_turn("a"), _turn("b"), _turn("c")]
+    assert fake.queries[3].working.notes == ["a", "b"]
+    assert [m["content"] for m in fake.queries[3].history] == ["c", "re: c"]
+
+
+class FailingFoldLLM(FakeLLM):
+    """FakeLLM whose first fold raises `error`."""
+
+    def __init__(self, error):
+        super().__init__()
+        self.error = error
+
+    async def fold_into_working_memory(self, working, turns):
+        if self.error is not None:
+            error, self.error = self.error, None
+            raise error
+        return await super().fold_into_working_memory(working, turns)
+
+
+def _talk_through_a_failed_fold(error):
+    async def session():
+        fake = FailingFoldLLM(error)
+        harness = _harness(fake, max_history_turns=1)
+        for q in "abcd":
+            await asyncio.gather(
+                asyncio.wait_for(_ask(harness, q), 1), return_exceptions=True
+            )
+        return fake
+
+    return asyncio.run(session())
+
+
+def test_a_failed_fold_is_retried():
+    fake = _talk_through_a_failed_fold(asyncio.CancelledError())
+    assert fake.folds == [_turn("a") + _turn("b"), _turn("c")]
+    assert fake.queries[3].working.notes == ["a", "b"]
+    assert [m["content"] for m in fake.queries[3].history] == ["c", "re: c"]
+
+
+def test_a_fold_that_raised_an_error_is_retried():
+    fake = _talk_through_a_failed_fold(ConnectionError("replica unreachable"))
+    # Not folded yet: still sent verbatim.
+    assert [m["content"] for m in fake.queries[2].history] == [
+        "a",
+        "re: a",
+        "b",
+        "re: b",
+    ]
+    assert fake.folds == [_turn("a") + _turn("b"), _turn("c")]
+    assert fake.queries[3].working.notes == ["a", "b"]
+    assert [m["content"] for m in fake.queries[3].history] == ["c", "re: c"]
 
 
 def test_robots_do_not_wait_for_each_other():
