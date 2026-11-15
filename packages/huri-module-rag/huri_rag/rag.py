@@ -1050,6 +1050,8 @@ class RAG(ModuleWithHandle, ModuleWithId):
         # yet: still sent verbatim, so no question misses them meanwhile.
         self._folding: list[dict] = []
         self._working_lock = asyncio.Lock()
+        # The module's own tasks: an interrupt of an answer can't cancel them.
+        self._folds: set[asyncio.Task] = set()
         # One answer at a time: the bus runs each question in its own task, so
         # a question asked during an answer waits for it, then knows it.
         self._answer_lock = asyncio.Lock()
@@ -1097,8 +1099,11 @@ class RAG(ModuleWithHandle, ModuleWithId):
             if self._working:
                 self._folding.extend(evicted)
         # Outside the answer lock: the next question need not wait for it.
-        if evicted and self._working:
-            await self._fold_into_working_memory(evicted)
+        if self._folding:  # also picks up what an earlier fold left
+            fold = asyncio.create_task(self._fold_into_working_memory())
+            self._folds.add(fold)
+            fold.add_done_callback(self._folds.discard)
+            await asyncio.shield(fold)
 
     def _record_turn(self, question: str, answer: str) -> list[dict]:
         answer = answer.strip()
@@ -1111,21 +1116,27 @@ class RAG(ModuleWithHandle, ModuleWithId):
         del self.history[: len(evicted)]
         return evicted
 
-    async def _fold_into_working_memory(self, turns: list[dict]) -> None:
+    async def _fold_into_working_memory(self) -> None:
         async with self._working_lock:
+            turns = list(self._folding)
+            if not turns:
+                return  # an earlier fold took them
             try:
                 self.working = await self._handle.fold_into_working_memory.remote(
                     self.working, turns
                 )
             except Exception:
                 print(f"[RAG] working memory update failed:\n{traceback.format_exc()}")
+                return  # the turns stay pending: the next answer retries
             self._folding = [m for m in self._folding if all(m is not t for t in turns)]
 
     async def finalize(self) -> None:
+        for fold in list(self._folds):
+            fold.cancel()  # session over: its turns stay in _folding, saved below
         if not self._long:
             return
         async with self._working_lock:
-            # A fold cancelled with the session left its turns in _folding.
+            # Turns no fold finished are still in _folding.
             history = self._folding + self.history
             if not history and not self.working:
                 return
