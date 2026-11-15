@@ -189,7 +189,9 @@ class CosyVoiceTTSHandle:
             q.put(_END_TEXT)
 
     async def stream_audio(self, session_id: str) -> AsyncGenerator[Audio, None]:
-        text_q = self._text_queues[session_id]
+        text_q = self._text_queues.get(session_id)
+        if text_q is None:  # ended before this stream started
+            return
         loop = asyncio.get_running_loop()
         chunk_count = 0
 
@@ -220,3 +222,10 @@ class CosyVoiceTTSHandle:
             raise
         finally:
             self._text_queues.pop(session_id, None)
+            # On cancel the executor thread is blocked in text_q.get(); wake it.
+            text_q.put(_END_TEXT)
+
+    async def end_session(self, session_id: str) -> None:
+        q = self._text_queues.pop(session_id, None)
+        if q is not None:
+            q.put(_END_TEXT)
