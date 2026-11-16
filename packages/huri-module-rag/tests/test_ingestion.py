@@ -693,7 +693,9 @@ def _run_cmd_pdf_on_folder(monkeypatch, folder):
     return ingested
 
 
-def test_cmd_pdf_folder_finds_pdfs_whatever_the_extension_case(monkeypatch, tmp_path):
+def test_cmd_pdf_folder_finds_pdfs_whatever_the_extension_case(
+    monkeypatch, tmp_path, capsys
+):
     (tmp_path / "Facture-2025-03.PDF").touch()
     (tmp_path / "contrat.pdf").touch()
     sub = tmp_path / "2024"
@@ -703,7 +705,9 @@ def test_cmd_pdf_folder_finds_pdfs_whatever_the_extension_case(monkeypatch, tmp_
 
     ingested = _run_cmd_pdf_on_folder(monkeypatch, tmp_path)
 
-    assert sorted(ingested) == ["Facture-2025-03.PDF", "Releve.Pdf", "contrat.pdf"]
+    # The exact order: sub-folders' files first, as sorted by path (not by name).
+    assert ingested == ["Releve.Pdf", "Facture-2025-03.PDF", "contrat.pdf"]
+    assert "from 3 PDF(s)" in capsys.readouterr().out
 
 
 def test_cmd_pdf_folder_without_pdf_says_so(monkeypatch, tmp_path, capsys):
