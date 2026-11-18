@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from typing import AsyncGenerator, Optional
 
@@ -9,6 +10,8 @@ from ray import serve
 from ray.serve import handle
 
 from huri_core.core.module import ModuleWithHandle
+
+logger = logging.getLogger("ray.serve")
 
 _HF_REPO = os.environ.get("HURI_EMAGE_REPO", "H-Liu1997/emage_audio")
 _EMAGE_SR = 16000  # EMAGE expects 16 kHz mono audio
@@ -44,7 +47,7 @@ class MOVHandle:
         device: Optional[str] = None,
         gpu_mem_fraction: float = _GPU_MEM_FRACTION,
     ):
-        print("[MOV] importing torch...")
+        logger.debug("[MOV] importing torch...")
         import torch
 
         # Pin algorithm selection so the kernels warmed below are the same ones
@@ -59,13 +62,13 @@ class MOVHandle:
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
 
-        print("[MOV] importing emage...")
+        logger.debug("[MOV] importing emage...")
         from .emage import EmageAudioModel, EmageVAEConv, EmageVQModel, EmageVQVAEConv
 
         self.device = torch.device(
             device if device else ("cuda" if torch.cuda.is_available() else "cpu")
         )
-        print(f"[MOV] device={self.device} hf_repo={hf_repo!r}")
+        logger.info("[MOV] device=%s hf_repo=%r", self.device, hf_repo)
 
         # Manual GPU split: cap this process' share of GPU memory so the audio
         # (TTS) path keeps the rest. num_gpus in the Ray serveConfig handles
@@ -75,29 +78,29 @@ class MOVHandle:
                 torch.cuda.set_per_process_memory_fraction(
                     gpu_mem_fraction, self.device.index or 0
                 )
-                print(
-                    f"[MOV] GPU memory fraction capped at {gpu_mem_fraction:.2f}",
+                logger.info(
+                    "[MOV] GPU memory fraction capped at %.2f", gpu_mem_fraction
                 )
             except Exception as e:  # noqa: BLE001 — best-effort knob, never fatal
-                print(f"[MOV] WARNING could not cap GPU memory: {e!r}")
+                logger.warning("[MOV] could not cap GPU memory: %r", e)
 
-        print("[MOV] loading face_vq...")
+        logger.debug("[MOV] loading face_vq...")
         face_vq = EmageVQVAEConv.from_pretrained(hf_repo, subfolder="emage_vq/face").to(
             self.device
         )
-        print("[MOV] loading upper_vq...")
+        logger.debug("[MOV] loading upper_vq...")
         upper_vq = EmageVQVAEConv.from_pretrained(
             hf_repo, subfolder="emage_vq/upper"
         ).to(self.device)
-        print("[MOV] loading lower_vq...")
+        logger.debug("[MOV] loading lower_vq...")
         lower_vq = EmageVQVAEConv.from_pretrained(
             hf_repo, subfolder="emage_vq/lower"
         ).to(self.device)
-        print("[MOV] loading hands_vq...")
+        logger.debug("[MOV] loading hands_vq...")
         hands_vq = EmageVQVAEConv.from_pretrained(
             hf_repo, subfolder="emage_vq/hands"
         ).to(self.device)
-        print("[MOV] loading global_ae...")
+        logger.debug("[MOV] loading global_ae...")
         global_ae = EmageVAEConv.from_pretrained(
             hf_repo, subfolder="emage_vq/global"
         ).to(self.device)
@@ -111,12 +114,12 @@ class MOVHandle:
         )
         self.motion_vq.eval()
 
-        print("[MOV] loading EmageAudioModel...")
+        logger.debug("[MOV] loading EmageAudioModel...")
         self.model = EmageAudioModel.from_pretrained(hf_repo).to(self.device)
         self.model.eval()
 
         self._warmup()
-        print("[MOV] ready")
+        logger.info("[MOV] ready")
 
     def _warmup(self) -> None:
         # The first inference pays one-time costs that are *shape- and
@@ -165,17 +168,19 @@ class MOVHandle:
                     self.infer(dummy, source_sr=_WARMUP_SRC_SR)
                     if self.device.type == "cuda":
                         torch.cuda.synchronize(self.device)
-                    print(
-                        f"[MOV] warmup pass {pass_idx} {s:.2f}s "
-                        f"({n} samples @ {_WARMUP_SRC_SR} Hz) "
-                        f"in {time.time() - ts:.2f}s",
+                    logger.debug(
+                        "[MOV] warmup pass %s %.2fs (%s samples @ %s Hz) in %.2fs",
+                        pass_idx,
+                        s,
+                        n,
+                        _WARMUP_SRC_SR,
+                        time.time() - ts,
                     )
-            print(
-                f"[MOV] warmup done ({len(secs)} shapes x2) "
-                f"in {time.time() - t0:.2f}s",
+            logger.info(
+                "[MOV] warmup done (%s shapes x2) in %.2fs", len(secs), time.time() - t0
             )
         except Exception as e:  # noqa: BLE001 — warmup is an optimisation, never fatal
-            print(f"[MOV] WARNING warmup failed: {e!r}")
+            logger.warning("[MOV] warmup failed: %r", e)
 
     def infer(self, audio_np: np.ndarray, source_sr: int = _EMAGE_SR) -> Motion:
         import torch
