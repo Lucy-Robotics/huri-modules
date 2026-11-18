@@ -22,6 +22,7 @@ The public surface is the one huri_tts.streaming.StreamingTTS drives —
 """
 
 import asyncio
+import logging
 import os
 import re
 import traceback
@@ -30,6 +31,8 @@ from typing import AsyncGenerator, Dict, List
 import numpy as np
 from huri_events.audio import Audio
 from ray import serve
+
+logger = logging.getLogger("ray.serve")
 
 _VOICE_PATH = os.environ.get(
     "HURI_PIPER_VOICE", "assets/models/piper/en_US-lessac-medium.onnx"
@@ -75,9 +78,10 @@ class PiperTTSHandle:
         self._sample_rate = int(self._voice.config.sample_rate)
         self._buffers: Dict[str, List[str]] = {}
         self._queues: Dict[str, asyncio.Queue] = {}
-        print(
-            f"[PiperTTS] loaded {os.path.basename(voice_path)} "
-            f"@ {self._sample_rate}Hz (onnxruntime, CPU)"
+        logger.info(
+            "[PiperTTS] loaded %s @ %sHz (onnxruntime, CPU)",
+            os.path.basename(voice_path),
+            self._sample_rate,
         )
 
     @staticmethod

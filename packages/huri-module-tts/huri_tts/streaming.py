@@ -1,6 +1,7 @@
 """The engine-agnostic half of HuRI's text-to-speech modules."""
 
 import asyncio
+import logging
 import uuid
 from typing import TYPE_CHECKING, Any, AsyncGenerator
 
@@ -12,6 +13,8 @@ from huri_core.core.module import ModuleWithHandle
 
 if TYPE_CHECKING:
     from ray.serve import handle
+
+logger = logging.getLogger("ray.serve")
 
 _END_AUDIO = object()  # sentinel pushed into the audio queue when synthesis ends
 
@@ -68,13 +71,16 @@ class StreamingTTS(ModuleWithHandle):
                     sid = self._session_id = str(uuid.uuid4())
                     audio_q = self._audio_q = asyncio.Queue()
                     opened = True
-                    print(f"[TTS-client] [{sid}] opening new utterance session")
+                    logger.info("[TTS-client] [%s] opening new utterance session", sid)
                     await self._handle.start_session.remote(sid)
                     stream_task = self._stream_task = asyncio.create_task(
                         self._drain_audio(sid, audio_q)
                     )
-                print(
-                    f"[TTS-client] [{sid}] push token: {token.text!r} (end={token.end})"
+                logger.debug(
+                    "[TTS-client] [%s] push token: %r (end=%s)",
+                    sid,
+                    token.text,
+                    token.end,
                 )
                 await self._handle.push_text.remote(sid, token.text, token.end)
 
@@ -88,11 +94,11 @@ class StreamingTTS(ModuleWithHandle):
                 if item is _END_AUDIO:
                     break
                 count += 1
-                print(f"[TTS-client] [{sid}] yield chunk #{count}")
+                logger.debug("[TTS-client] [%s] yield chunk #%s", sid, count)
                 yield item
             await stream_task
             finished = True
-            print(f"[TTS-client] [{sid}] utterance complete ({count} chunks)")
+            logger.info("[TTS-client] [%s] utterance complete (%s chunks)", sid, count)
 
             sample_rate = await self._handle.get_sample_rate.remote()
             yield Audio(
@@ -124,9 +130,12 @@ class StreamingTTS(ModuleWithHandle):
                 count += 1
                 audio.pts = pts
                 pts += audio.data.shape[0] / audio.sample_rate
-                print(
-                    f"[TTS-client] [{session_id}] drain received chunk #{count} "
-                    f"pts={audio.pts:.3f}s next={pts:.3f}s",
+                logger.debug(
+                    "[TTS-client] [%s] drain received chunk #%s pts=%.3fs next=%.3fs",
+                    session_id,
+                    count,
+                    audio.pts,
+                    pts,
                 )
                 await audio_q.put(audio)
         except asyncio.CancelledError:
@@ -134,8 +143,8 @@ class StreamingTTS(ModuleWithHandle):
             response.cancel()
             raise
         except Exception as e:
-            print(f"[TTS-client] [{session_id}] drain task FAILED: {e!r}")
+            logger.warning("[TTS-client] [%s] drain task failed: %r", session_id, e)
             raise
         finally:
             await audio_q.put(_END_AUDIO)
-            print(f"[TTS-client] [{session_id}] drain task finished")
+            logger.info("[TTS-client] [%s] drain task finished", session_id)
