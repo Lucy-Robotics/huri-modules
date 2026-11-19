@@ -154,6 +154,10 @@ after the huri-core release they target is tagged:
    when the GPU paths changed, `gpu.yml` and the GPU images (`docker.yml` with
    `gpu_images`).
 3. Merge it, then open the PR from `dev` into `main`, named `Release X.Y.Z`.
+   `main` takes pull requests from `dev` only (the Release check fails
+   otherwise), merged with a merge commit, the only method its ruleset
+   allows: `dev` then always contains `main`, and the next release PR cannot
+   conflict.
    Its **Release** check (`.github/workflows/release.yml`) fails, naming the
    culprit, when the release would be incomplete: any distribution's version
    (`meta/` or `packages/`) is a pre-release or not canonical; the metapackage
