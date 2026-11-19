@@ -203,6 +203,37 @@ def test_each_utterance_gets_its_own_session():
     ]
 
 
+def test_next_answer_starts_before_the_previous_end_marker_is_resumed():
+    class EagerEngine(FakeEngine):
+        async def stream_audio(self, sid):
+            yield Audio(np.ones(10, np.float32), 16000)
+            await self.sessions[sid]["done"].wait()
+
+    engine = EagerEngine()
+    tts = Engine(StreamHandle(engine))
+
+    async def consecutive_answers():
+        first = tts.process(Token("One.", True))
+        second = tts.process(Token("Tomorrow", False))
+        try:
+            assert not (await anext(first)).end
+            assert (await anext(first)).end
+            assert not (await asyncio.wait_for(anext(second), 1)).end
+            # The bus may resume the completed generator while the new one streams.
+            await first.aclose()
+            assert [chunk async for chunk in tts.process(Token(" again.", True))] == []
+            assert (await asyncio.wait_for(anext(second), 1)).end
+            assert [s["texts"] for s in engine.sessions.values()] == [
+                ["One."],
+                ["Tomorrow", " again."],
+            ]
+        finally:
+            await first.aclose()
+            await second.aclose()
+
+    asyncio.run(consecutive_answers())
+
+
 # Scenario: An interrupted utterance publishes no more audio
 def test_an_interrupted_tts_utterance_stops_on_the_replica():
     handle = StreamHandle(HangingEngine())
