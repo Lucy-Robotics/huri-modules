@@ -515,6 +515,8 @@ GPU ones ship `requirements-<variant>[.<module>].txt` pins next to it.
 ```sh
 make lint                              # black, isort, flake8, mypy (as CI; `make format` fixes the first two)
 make test                              # pytest: tests/ and packages/*/tests
+make bench                             # benchmarks: a spoken turn (models faked), the events' wire cost
+make bench-compare                     # the same against origin/dev (BASE=...), fails on a mean >25% slower; RELEASE=<tag> adds a report-only table
 make check                             # both
 python check_registry.py --run-tests   # the registry against its packages
 python scripts/check_links.py          # the pages' relative links and anchors

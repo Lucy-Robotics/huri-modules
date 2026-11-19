@@ -33,6 +33,19 @@ format:
 test:
 	pytest
 
+# One spoken turn through the curated pipeline (models faked) and the curated
+# events' wire round trip; `make test` leaves them out.
+# tests/benchmarks spans packages; a package's own are in packages/<pkg>/tests/benchmarks.
+BENCH_PATHS = tests/benchmarks $(wildcard packages/*/tests/benchmarks)
+bench:
+	pytest -o addopts= $(BENCH_PATHS) --benchmark-only --benchmark-columns=mean,median,rounds
+
+# Benchmarks against another branch (BASE); SUMMARY is a file to append the tables
+# to; RELEASE (a tag) is also compared, report only.
+BASE ?= origin/dev
+bench-compare:
+	scripts/bench_compare.sh "$(BASE)" "$(SUMMARY)" "$(RELEASE)"
+
 # Run lint and test even if lint fails, then fail at the end if either did.
 check:
 	@rc=0; \
@@ -40,4 +53,4 @@ check:
 	$(MAKE) --no-print-directory test || rc=1; \
 	exit $$rc
 
-.PHONY: lint format test check
+.PHONY: lint format test check bench bench-compare
