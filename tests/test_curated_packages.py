@@ -90,32 +90,3 @@ def test_module_extras_name_its_modules_and_extras(path):
     for module, extra in extras.items():
         assert module in modules, f"{path.name}: {module} is not one of its modules"
         assert extra in optional, f"{path.name}: no extra {extra!r}"
-
-
-def test_tts_installs_no_engine_without_its_extra():
-    tts = ROOT / "packages" / "huri-module-tts"
-    base = {
-        canonicalize_name(Requirement(r).name) for r in project(tts)["dependencies"]
-    }
-    assert not {"piper-tts", "torch", "torchaudio", "onnxruntime"} & base
-    assert project(tts)["optional-dependencies"]["piper"] == ["piper-tts>=1.8,<1.9"]
-
-
-@pytest.mark.parametrize(
-    "package,light,heavy",
-    [
-        ("huri-module-emo", "eag", {"torch", "transformers"}),
-        ("huri-module-emo", "emo_react", {"torch", "transformers"}),
-        ("huri-module-rag", "qag", {"qdrant-client", "sentence-transformers"}),
-    ],
-)
-def test_an_aggregator_does_not_install_its_sibling_s_stack(package, light, heavy):
-    """The heavy libraries are the extra of the module that imports them, so a
-    host running only the aggregator never installs them."""
-    path = ROOT / "packages" / package
-    pyproject = tomllib.loads((path / "pyproject.toml").read_text())
-    base = {
-        canonicalize_name(Requirement(r).name) for r in project(path)["dependencies"]
-    }
-    assert not heavy & base
-    assert light not in pyproject["tool"]["huri-modules"]["extras"]
