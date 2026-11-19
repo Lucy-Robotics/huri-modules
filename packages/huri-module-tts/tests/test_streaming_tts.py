@@ -3,6 +3,7 @@ process() call per token."""
 
 import asyncio
 import functools
+import logging
 from types import SimpleNamespace
 
 import numpy as np
@@ -122,6 +123,54 @@ class StreamHandle(LocalHandle):
 
 async def speak(harness, tokens):
     return await asyncio.gather(*(harness.feed(t) for t in tokens))
+
+
+@pytest.fixture
+def serve_log(caplog):
+    logger = logging.getLogger("ray.serve")
+    old_level, old_propagate = logger.level, logger.propagate
+    logger.addHandler(caplog.handler)
+    logger.propagate = False
+    try:
+        yield caplog
+    finally:
+        logger.removeHandler(caplog.handler)
+        logger.setLevel(old_level)
+        logger.propagate = old_propagate
+
+
+@pytest.mark.parametrize("level", [logging.INFO, logging.DEBUG])
+def test_stream_progress_respects_log_level(level, serve_log, capsys):
+    serve_log.set_level(level, logger="ray.serve")
+    harness = ModuleHarness(Engine, handle=LocalHandle(FakeEngine()))
+    asyncio.run(speak(harness, [Token("Hello", False), Token("", True)]))
+    records = [r for r in serve_log.records if r.name == "ray.serve"]
+    assert any("opening new utterance" in r.getMessage() for r in records)
+    assert any("utterance complete" in r.getMessage() for r in records)
+    for message in ("push token", "yield chunk", "drain received chunk"):
+        assert any(message in r.getMessage() for r in records) == (
+            level == logging.DEBUG
+        )
+    assert capsys.readouterr().out == ""
+
+
+def test_stream_failure_is_a_warning(serve_log, capsys):
+    class FailingEngine(FakeEngine):
+        async def stream_audio(self, sid):
+            raise RuntimeError("synthesis failed")
+            yield  # make the failing source an async generator
+
+    serve_log.set_level(logging.INFO, logger="ray.serve")
+    harness = ModuleHarness(Engine, handle=LocalHandle(FailingEngine()))
+    with pytest.raises(RuntimeError, match="synthesis failed"):
+        asyncio.run(speak(harness, [Token("Hello", True)]))
+    assert any(
+        r.levelno == logging.WARNING
+        and "synthesis failed" in r.getMessage()
+        and "drain task" in r.getMessage()
+        for r in serve_log.records
+    )
+    assert capsys.readouterr().out == ""
 
 
 def test_an_utterance_streams_in_token_order_and_ends_with_a_marker():
