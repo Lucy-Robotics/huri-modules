@@ -321,6 +321,22 @@ jobs:
         run: pytest -q --cov=packages --cov-branch --cov-report=term-missing:skip-covered --cov-fail-under=75
         env:
           HURI_PIPER_VOICE: /tmp/piper/en_US-lessac-medium.onnx
+      - name: benchmarks vs the base branch, and vs the last release (report only)
+        # `make bench-compare` (tests/benchmarks): this PR's benchmarks on the
+        # base's packages and on this PR's, tables in the job summary, a mean
+        # more than 25% slower than the base fails this step. Non-blocking until
+        # its noise on shared runners is known. In this job, which has the
+        # whole stack installed already.
+        if: ${{ !matrix.canary && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --depth=1 origin "$BASE_REF"
+          base=$(git rev-parse FETCH_HEAD)
+          git fetch --depth=1 origin 'refs/tags/*:refs/tags/*'
+          release=$(git tag --list --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          make bench-compare BASE="$base" RELEASE="$release" SUMMARY="$GITHUB_STEP_SUMMARY"
       - name: the huri-modules metapackage (meta/) builds and its metadata is valid
         id: metapackage
         continue-on-error: ${{ matrix.canary }}

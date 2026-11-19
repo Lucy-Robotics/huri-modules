@@ -44,6 +44,9 @@ omit = ["*/tests/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "packages/*/tests"]
+# Benchmarks (tests/benchmarks, packages/*/tests/benchmarks) are slow and noisy:
+# only `make bench` runs them.
+addopts = "--ignore-glob=*/benchmarks/*"
 # The distributions in this repo (packages/*), importable from a
 # plain checkout; CI and the installer also install them editable.
 pythonpath = [
