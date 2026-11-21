@@ -306,6 +306,46 @@ def test_a_fold_that_raised_an_error_is_retried():
     assert [m["content"] for m in fake.queries[3].history] == ["c", "re: c"]
 
 
+@pytest.mark.parametrize("memory", ["short,working", "working"])
+def test_repeated_fold_failures_bound_pending_turns_and_recover(memory, capsys):
+    class UnavailableMemory(FakeLLM):
+        def __init__(self):
+            super().__init__()
+            self.unavailable = True
+            self.attempts = []
+
+        async def fold_into_working_memory(self, working, turns):
+            self.attempts.append(turns)
+            if self.unavailable:
+                raise ConnectionError("replica unreachable")
+            return await super().fold_into_working_memory(working, turns)
+
+    async def session():
+        fake = UnavailableMemory()
+        harness = _harness(fake, max_history_turns=1, memory=memory)
+        for n in range(40):
+            await asyncio.wait_for(_ask(harness, f"question {n}"), 1)
+        failed_attempts = len(fake.attempts)
+        fake.unavailable = False
+        await asyncio.wait_for(_ask(harness, "recovered"), 1)
+        await asyncio.wait_for(_ask(harness, "next"), 1)
+        return fake, failed_attempts
+
+    fake, failed_attempts = asyncio.run(session())
+    # 32 pending exchanges, plus at most one short-term exchange.
+    assert max(len(query.history) for query in fake.queries) <= 66
+    assert max(len(turns) for turns in fake.attempts) <= 64
+    assert len(fake.folds[0]) == 64
+    folded_questions = [m["content"] for m in fake.folds[0] if m["role"] == "user"]
+    assert "question 0" not in folded_questions
+    assert "question 39" in folded_questions
+    assert "question 39" in fake.queries[-1].working.notes
+    assert (
+        capsys.readouterr().out.count("working memory update failed:")
+        == failed_attempts
+    )
+
+
 def test_robots_do_not_wait_for_each_other():
     async def server():
         fake = GatedLLM()  # one RAGHandle for every robot, as on the server

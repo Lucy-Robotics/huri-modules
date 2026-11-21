@@ -36,7 +36,14 @@ human memory models of Atkinson & Shiffrin (1968) and Baddeley & Hitch
 
 An exchange pushed out of short-term memory is folded into working memory by
 the LLM, after the answer that pushed it out has been sent. At the end of the
-session, both go into one long-term memory point. Points are recalled by
+session, both go into one long-term memory point. If the memory replica fails,
+its pending exchanges are retried after later answers and included verbatim
+in their prompts. At most the newest 32 pending exchanges are kept; overflow
+drops the oldest unfolded exchanges and logs how many were discarded. Each
+failed fold is logged, and the retained exchanges are folded when the replica
+recovers. This limit applies with working memory alone too.
+
+Points are recalled by
 relevance, recency and importance and fade and merge over time, as in
 Generative Agents (Park et al., [arXiv:2304.03442](https://arxiv.org/abs/2304.03442)).
 
