@@ -10,7 +10,7 @@ import pytest
 from packaging.requirements import Requirement as PepRequirement
 from packaging.utils import canonicalize_name
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location(
     "module_requirements", ROOT / "scripts" / "module_requirements.py"
 )

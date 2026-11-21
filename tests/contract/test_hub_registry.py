@@ -9,7 +9,7 @@ from pathlib import Path
 from huri_hub import cli
 from huri_hub import registry as hub
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / "registry.toml"
 REPO = "git+https://github.com/Lucy-Robotics/huri-modules.git"
 ENTRIES = tomllib.loads(REGISTRY.read_text())["module"]

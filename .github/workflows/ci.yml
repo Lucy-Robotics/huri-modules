@@ -198,7 +198,7 @@ jobs:
 
       - name: plan
         # Offline by design: --plan-only shows the refs of versions.env and
-        # resolves none of them (tests/test_installer.py checks it with a fake git).
+        # resolves none of them (tests/tooling/test_installer.py checks it with a fake git).
         run: ./install.sh --plan-only --python "$HURI_PY"
 
       - name: the plan must reach a usable verdict

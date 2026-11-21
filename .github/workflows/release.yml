@@ -1,7 +1,7 @@
 # Releases: merging the release PR into main is the only step.
 #
 # - On a pull request into main (the release PR), `plan` checks the release is
-#   consistent (scripts/release_plan.py, tests/test_metapackage.py) and builds
+#   consistent (scripts/release_plan.py, tests/tooling/test_metapackage.py) and builds
 #   and checks every distribution; the job summary says what merging will
 #   publish.
 # - On a push to main whose huri-modules version (meta/pyproject.toml) is not
@@ -66,7 +66,7 @@ jobs:
       # Not `-c constraints.txt` as ci.yml: it pins the images' runtime deps only.
       - run: pip install build twine pytest "packaging>=23"
       - name: the metapackage pins the packages and the registry
-        run: pytest -q tests/test_metapackage.py
+        run: pytest -q tests/tooling/test_metapackage.py
       - id: plan
         run: python scripts/release_plan.py
       # The packages and the metapackage apart: it pins them, so they are

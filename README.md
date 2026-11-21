@@ -577,8 +577,9 @@ See [`packages/huri-module-stt/tests/test_stt.py`](packages/huri-module-stt/test
   (`client_template.yaml`); the installer writes `client_local.generated.yaml`
 - **deploy/** — the Docker images, `install_huri.sh`, a session smoke test and
   Helm values examples (`deploy/examples`); **helm/** — the KubeRay chart
-- **tests/** — the curated set's tests; **tests/integration** — the whole
-  curated pipeline in one session
+- **tests/** — the repo's own tests (each package's are in its `tests/`):
+  **contract/**, rules every package follows; **tooling/**, the repo's scripts
+  and shipped files; **integration/**, the whole curated pipeline in one session
 
 ## Modules as plugins
 
