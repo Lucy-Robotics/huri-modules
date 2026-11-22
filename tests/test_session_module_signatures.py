@@ -34,6 +34,6 @@ def test_session_module_constructor_does_not_accept_arbitrary_kwargs(
     source = source_path.read_text()
     constructor = get_constructor(source, class_name)
 
-    assert constructor.args.kwarg is None, (
-        f"{class_name}.__init__ should not expose **kwargs"
-    )
+    assert (
+        constructor.args.kwarg is None
+    ), f"{class_name}.__init__ should not expose **kwargs"
