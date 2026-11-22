@@ -1011,9 +1011,8 @@ class RAG(ModuleWithHandle, ModuleWithId):
         temperature=0.7,
         max_history_turns=6,
         memory: str | Sequence[str] = MEMORIES,
-        **kwargs,
     ):
-        super().__init__(_handle=_handle, _user_id=_user_id, **kwargs)
+        super().__init__(_handle=_handle, _user_id=_user_id)
 
         print(
             f"[RAG] Initialized with user_id={_user_id}, language={language}, "

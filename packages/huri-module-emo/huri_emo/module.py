@@ -86,9 +86,8 @@ class EMO(ModuleWithHandle):
         sample_rate: int = 16000,
         block_duration: float = 0.020,  # s
         analysis_window: float = 4.0,  # s
-        **kwargs,
     ):
-        super().__init__(_handle=_handle, **kwargs)
+        super().__init__(_handle=_handle)
 
         self.sample_rate = sample_rate
         self.window_size = int(analysis_window / block_duration)
