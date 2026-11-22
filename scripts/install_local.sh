@@ -27,9 +27,9 @@
 # editable from a local checkout given as HURI_CORE_PATH=/path/to/huri-core.
 # The curated events and modules (packages/*, with huri-hub: `huri hub`) are
 # installed editable from this checkout. huri-cli, the reference client (a use
-# case of HuRI, not part of it), comes the same way as huri-core: from
-# https://github.com/Lucy-Robotics/HuRI-CLI at HURI_CLI_REF, or editable from
-# HURI_CLI_PATH; --no-cli leaves it out.
+# case of HuRI, not part of it, so not pinned here), is its newest release on
+# PyPI that supports the huri-core and huri-events just installed, or editable
+# from HURI_CLI_PATH; --no-cli leaves it out.
 #
 # No git network call here ever prompts for credentials (a missing or private
 # repository answers 401, and git would ask): see the environment set below.
@@ -82,15 +82,12 @@ else HURI_CORE_REF_FROM="versions.env"; fi
 HURI_CORE_REF="${HURI_CORE_REF:-$(versions_get HURI_CORE_REF)}"
 HURI_CORE_PATH="${HURI_CORE_PATH:-}"
 # huri-cli: the reference client, installed unless --no-cli.
-HURI_CLI_GIT="https://github.com/Lucy-Robotics/HuRI-CLI.git"
-if [[ -n "${HURI_CLI_REF:-}" ]]; then HURI_CLI_REF_FROM="the environment"
-else HURI_CLI_REF_FROM="versions.env"; fi
-HURI_CLI_REF="${HURI_CLI_REF:-$(versions_get HURI_CLI_REF)}"
 HURI_CLI_PATH="${HURI_CLI_PATH:-}"
-# The commits the refs name, resolved by resolve_refs when installing (never by
-# --plan-only or --dry-run, which make no network call).
+# Set when no huri-cli release supports the installed core: verify warns.
+CLI_UNAVAILABLE=0
+# The commit HURI_CORE_REF names, resolved by resolve_refs when installing
+# (never by --plan-only or --dry-run, which make no network call).
 HURI_CORE_SHA=""
-HURI_CLI_SHA=""
 
 # --- Pinned versions (kept in sync with deploy/) -----------------------------
 
@@ -278,8 +275,8 @@ Environment
   HURI_CORE_REF=REF       huri-core git ref to install (default: HURI_CORE_REF
                           in versions.env at the repository root)
   HURI_CLI_PATH=DIR       Install huri-cli editable from this local checkout
-  HURI_CLI_REF=REF        huri-cli git ref to install (default: HURI_CLI_REF in
-                          versions.env)
+                          (default: its newest PyPI release that supports the
+                          installed huri-core and huri-events)
   Git never prompts for credentials: a repository it cannot read fails the
   install with a message naming the ref to fix. --plan-only stays offline.
 
@@ -342,15 +339,10 @@ if [[ -n "$HURI_CORE_PATH" ]]; then
 elif [[ -z "$HURI_CORE_REF" ]]; then
   echo "no huri-core ref: no HURI_CORE_REF in $VERSIONS_FILE (or the environment)" >&2; exit 2
 fi
-if (( ! INSTALL_CLI )); then
-  :
-elif [[ -n "$HURI_CLI_PATH" ]]; then
+if (( INSTALL_CLI )) && [[ -n "$HURI_CLI_PATH" ]]; then
   [[ -f "$HURI_CLI_PATH/pyproject.toml" && -d "$HURI_CLI_PATH/huri_cli" ]] \
     || { echo "HURI_CLI_PATH='$HURI_CLI_PATH' is not a huri-cli checkout" >&2; exit 2; }
   HURI_CLI_PATH="$(readlink -f "$HURI_CLI_PATH")"
-elif [[ -z "$HURI_CLI_REF" ]]; then
-  echo "no huri-cli ref: no HURI_CLI_REF in $VERSIONS_FILE (or the environment);" \
-    "set one, or pass --no-cli" >&2; exit 2
 fi
 
 # An API key given on an earlier run lives in .huri-local/secrets.env; reload it
@@ -773,15 +765,12 @@ resolve_ref() {
   printf '%s\n' "$sha"
 }
 
-# resolve_refs — HURI_CORE_SHA and HURI_CLI_SHA, for what is installed from git.
+# resolve_refs — HURI_CORE_SHA, when huri-core is installed from git.
 # Only when installing for real: --plan-only and --dry-run stay offline.
 resolve_refs() {
   (( DRY_RUN || PLAN_ONLY )) && return 0
   if [[ -z "$HURI_CORE_PATH" && -z "$HURI_CORE_SHA" ]]; then
     HURI_CORE_SHA="$(resolve_ref huri-core "$HURI_CORE_GIT" "$HURI_CORE_REF" HURI_CORE_PATH)" || exit 1
-  fi
-  if (( INSTALL_CLI )) && [[ -z "$HURI_CLI_PATH" && -z "$HURI_CLI_SHA" ]]; then
-    HURI_CLI_SHA="$(resolve_ref huri-cli "$HURI_CLI_GIT" "$HURI_CLI_REF" HURI_CLI_PATH)" || exit 1
   fi
 }
 
@@ -802,8 +791,33 @@ cli_source() {
   elif [[ -n "$HURI_CLI_PATH" ]]; then
     printf 'editable from %s (HURI_CLI_PATH)\n' "$HURI_CLI_PATH"
   else
-    printf 'git ref %s%s of %s\n' "$HURI_CLI_REF" \
-      "${HURI_CLI_SHA:+ (${HURI_CLI_SHA:0:12})}" "${HURI_CLI_GIT%.git}"
+    printf 'newest PyPI release that supports this huri-core\n'
+  fi
+}
+
+# install_cli PIP_ARGS... — the reference client, huri-cli (its own repository:
+# a use case of HuRI, not pinned here), once huri-core and huri-events are in.
+# From PyPI: its newest release whose ranges accept them. They are pinned to
+# what is installed, or pip could downgrade core to fit an older client;
+# --upgrade so a re-run picks up a newer release. When no release fits, the
+# server is installed without the client (CLI_UNAVAILABLE=1, a warning).
+install_cli() {
+  if (( ! INSTALL_CLI )); then
+    note "huri-cli skipped (--no-cli)"; return 0
+  fi
+  info "  huri-cli ($(cli_source))"
+  if [[ -n "$HURI_CLI_PATH" ]]; then
+    run "$PIP" install "$@" -e "$HURI_CLI_PATH"; return
+  fi
+  local pins="$STATE_DIR/cli-constraints.txt"
+  (( DRY_RUN )) || "$VPY" -c 'from importlib.metadata import version as v
+for d in ("huri-core", "huri-events"): print(f"{d}=={v(d)}")' >"$pins"
+  if ! run "$PIP" install "$@" -c "$pins" --upgrade huri-cli; then
+    # No older huri-cli left behind that rejects this core.
+    run "$PIP" uninstall -y huri-cli || true
+    CLI_UNAVAILABLE=1
+    warn "no huri-cli release on PyPI supports $(tr '\n' ' ' <"$pins")(or PyPI" \
+      "is unreachable, see $LOG_FILE): installed without the client"
   fi
 }
 
@@ -1374,7 +1388,7 @@ HURI_STT_FRAC=$P_STT_FRAC
 HURI_VENV=$VENV_DIR
 HURI_PYTHON=$PY_BIN
 HURI_CORE_REF=$HURI_CORE_REF
-HURI_CLI=$( ((INSTALL_CLI)) && echo "${HURI_CLI_PATH:-$HURI_CLI_REF}" || echo none)
+HURI_CLI=$( ((INSTALL_CLI)) && echo "${HURI_CLI_PATH:-pypi}" || echo none)
 EOF
 }
 
@@ -1678,22 +1692,8 @@ install_python_deps() {
   for pkg in "$REPO_ROOT"/packages/*/; do
     run "$PIP" install "${C[@]}" --no-deps -e "$pkg"
   done
-  # The reference client, huri-cli (its own repository: a use case of HuRI),
-  # after huri-core and huri-events, which it depends on: its version ranges
-  # must accept them, or this is a resolver error. Like core, --force-reinstall
-  # --no-deps then a plain pass, so a re-run picks up the commit a branch is at.
-  if (( INSTALL_CLI )); then
-    info "  huri-cli ($(cli_source))"
-    if [[ -n "$HURI_CLI_PATH" ]]; then
-      run "$PIP" install "${C[@]}" -e "$HURI_CLI_PATH"
-    else
-      local cli="huri-cli @ git+$HURI_CLI_GIT@${HURI_CLI_SHA:-$HURI_CLI_REF}"
-      run "$PIP" install "${C[@]}" --force-reinstall --no-deps "$cli"
-      run "$PIP" install "${C[@]}" "$cli"
-    fi
-  else
-    note "huri-cli skipped (--no-cli)"
-  fi
+  # The reference client, after huri-core and huri-events, which it depends on.
+  install_cli "${C[@]}"
 
   # 3. (The ROCm CTranslate2 wheel is installed in step 1, alongside torch; the
   #    AMD requirements file is installed last, in step 5 — see the note there.)
@@ -2871,8 +2871,9 @@ PY
 
   # The reference client imports against the installed core and events. Only an
   # error when this run installed it; otherwise (--only verify, --skip-python)
-  # it may have been left out on purpose by an earlier --no-cli.
-  if (( INSTALL_CLI )); then
+  # it may have been left out on purpose by an earlier --no-cli. Already warned
+  # about when no release supports this core.
+  if (( INSTALL_CLI && ! CLI_UNAVAILABLE )); then
     if out="$(PYTHONWARNINGS=ignore "$VPY" -c 'import huri_cli.main' 2>&1)"; then
       ok "huri-cli imports"
     elif stage_enabled python && (( ! SKIP_PYTHON )); then

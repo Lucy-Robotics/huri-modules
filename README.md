@@ -27,8 +27,8 @@ lives in its own repository and is installed from git at the `HURI_CORE_REF` in
 [`versions.env`](versions.env) (see [Versions](#versions-and-compatibility)).
 The reference command-line client,
 [HuRI-CLI](https://github.com/Lucy-Robotics/HuRI-CLI), is a use case of HuRI
-with its own repository and releases; the installer adds it, at the
-`HURI_CLI_REF` in the same file.
+with its own repository and releases; the installer adds its newest release
+that supports the installed huri-core (it is not pinned here).
 To write a module of your own, start from
 [`huri-plugin-template`](https://github.com/Lucy-Robotics/huri-plugin-template).
 
@@ -56,7 +56,7 @@ host, or one that brings its own client, skips it with `./install.sh --no-cli`.
 **Use the installer, not a bare `pip install`.** It picks the right torch build
 for your GPU, applies `constraints.txt` (without which every Ray Serve replica
 crashes — see the comments in that file), creates the virtualenv, installs
-huri-core and huri-cli at the pinned refs, downloads the models and writes a
+huri-core at the pinned ref and the newest huri-cli that supports it, downloads the models and writes a
 Serve config that matches your hardware. The manual path is documented
 [below](#usage-without-the-installer) for people who need it.
 
@@ -191,12 +191,13 @@ reads the registry from.
 
 This repository has its own semver, tagged `X.Y.Z` (no `v`) on `main`; `dev`
 is the integration branch. A release is a tested set: every package of
-`packages/` at its own version, plus the refs of the other repositories in
+`packages/` at its own version, plus the huri-core ref in
 [`versions.env`](versions.env) they were all tested against: `HURI_CORE_REF`,
-the huri-core ref — a core release tag on `main`; on `dev`, that tag too, or
-huri-core's `dev` while the modules follow the next core minor (with their
-ranges moved to it in the same change) — and `HURI_CLI_REF`, the huri-cli ref
-the installer adds (a huri-cli release tag on `main`, `dev` or a tag on `dev`).
+a core release tag on `main`; on `dev`, that tag too, or huri-core's `dev`
+while the modules follow the next core minor (with their ranges moved to it in
+the same change). huri-cli is not pinned: the installer adds its newest release
+whose ranges accept the installed huri-core and huri-events, or none (with a
+warning) when no release supports that core yet.
 The installer, the Docker images and CI all read that one file
 (shell-sourceable `KEY=value` lines: `. ./versions.env`).
 
@@ -217,8 +218,8 @@ request; it also builds the sdist and wheel of every package under
 To develop huri-core and the modules together, point the installer at a local
 checkout instead of the git ref: `HURI_CORE_PATH=../huri-core ./install.sh`
 installs it editable (and `HURI_CORE_REF=<ref> ./install.sh` picks another ref).
-The same goes for the client: `HURI_CLI_PATH=../huri-cli` or
-`HURI_CLI_REF=<ref>`. The environment always wins over `versions.env`.
+The same goes for the client: `HURI_CLI_PATH=../huri-cli`. The environment
+always wins over `versions.env`.
 
 The installer never lets git prompt for credentials: a repository it cannot
 read (missing, private, or a ref that does not exist) stops the install with
@@ -395,7 +396,7 @@ yourself (when nothing else uses that cluster) before `start.sh`.
 | `qdrant is not answering … HuRI does not manage this instance` | Something else already owned the port when you installed, so HuRI never created its own. Start it yourself, or free the port and re-run `--only services`.           |
 | No audio from the client                                       | Check TTS is actually enabled (`grep HURI_MODULES config/huri_local.generated.yaml`) — with `--modules` or a dropped plan there may be no TTS at all.                |
 | No module loads: `entry point 'tts' is registered twice` | An environment from before huri-module-tts still has the three packages it replaced. `./install.sh --only python` removes them; otherwise `pip uninstall huri-tts huri-module-tts-piper huri-module-tts-cosyvoice`, then install huri-module-tts. |
-| `cannot reach huri-core at ref X` (or huri-cli)                | git could not read the repository (offline, or it answered 401: missing or private; git is never allowed to prompt). Check the ref in `versions.env`, or point `HURI_CORE_PATH` / `HURI_CLI_PATH` at a local checkout. |
+| `cannot reach huri-core at ref X`                              | git could not read the repository (offline, or it answered 401: missing or private; git is never allowed to prompt). Check the ref in `versions.env`, or point `HURI_CORE_PATH` at a local checkout. |
 | Install fails with no explanation                              | Every command's output is in `.huri-local/install.log`, and the error line names the real command.                                                                   |
 
 ## Usage without the installer
@@ -425,8 +426,7 @@ Client — the reference CLI, [HuRI-CLI](https://github.com/Lucy-Robotics/HuRI-C
 has its own repository:
 
 ```sh
-pip install -c constraints.txt \
-  "huri-cli @ git+https://github.com/Lucy-Robotics/HuRI-CLI.git@$(. ./versions.env && echo "$HURI_CLI_REF")"
+pip install -c constraints.txt huri-cli   # its newest release that fits the installed core
 huri-cli --config config/client_local.generated.yaml
 ```
 
@@ -492,7 +492,7 @@ ref=0.1.0   # a huri-modules release tag
 core=0.4.0  # HURI_CORE_REF in that release's versions.env
 CORE="git+https://github.com/Lucy-Robotics/huri-core.git@$core"
 MODS="git+https://github.com/Lucy-Robotics/huri-modules.git@$ref"
-cli=0.1.0   # a huri-cli release tag (HURI_CLI_REF in that release's versions.env)
+cli=0.1.0   # a huri-cli release tag whose ranges accept that core
 # a client: the SDK, the curated topics and the reference CLI (no Ray)
 pip install "huri-core[client] @ $CORE" \
   "huri-events @ $MODS#subdirectory=packages/huri-events" \
@@ -567,8 +567,8 @@ See [`packages/huri-module-stt/tests/test_stt.py`](packages/huri-module-stt/test
   extras (`huri-modules[vad,stt]`), versioned as the release
 - **registry.toml**, **check_registry.py**, **ACCEPTANCE.md** — the verified
   index, its CI check (with huri-hub's reader) and the listing criteria
-- **versions.env** — the huri-core and huri-cli refs this repository is built
-  and tested against; **RELEASING.md** — versions and releases
+- **versions.env** — the huri-core ref this repository is built and tested
+  against; **RELEASING.md** — versions and releases
 - **install.sh**, **scripts/** — the local installer (`install_local.sh`), the
   per-hardware requirement merger (`module_requirements.py`), the installer
   portability test (`test_install.sh`) and the pages' link check

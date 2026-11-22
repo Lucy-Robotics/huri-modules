@@ -16,7 +16,7 @@ plan = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plan)
 
 TAGS = ["0.1.0", "0.2.0"]
-REFS = {"HURI_CORE_REF": "0.4.1", "HURI_CLI_REF": "0.1.1"}
+REFS = {"HURI_CORE_REF": "0.4.1"}
 META = plan.Dist("huri-modules", "0.3.0", "meta", [])
 EVENTS = plan.Dist("huri-events", "0.3.0", "packages/huri-events", [])
 HUB = plan.Dist("huri-hub", "0.2.0", "packages/huri-hub", ["huri-core>=0.4,<0.5"])
@@ -77,10 +77,14 @@ def test_an_unchanged_package_already_on_pypi_is_fine():
 
 
 @pytest.mark.parametrize("ref", ["dev", "main", "0.5.0.dev0", "v0.4.1", ""])
-@pytest.mark.parametrize("key", ["HURI_CORE_REF", "HURI_CLI_REF"])
-def test_a_ref_that_is_not_a_release_tag_is_refused(key, ref):
-    (problem,) = check(refs={**REFS, key: ref})
-    assert problem.startswith(f"{key} is ")
+def test_a_core_ref_that_is_not_a_release_tag_is_refused(ref):
+    (problem,) = check(refs={"HURI_CORE_REF": ref})
+    assert problem.startswith("HURI_CORE_REF is ")
+
+
+def test_a_release_does_not_pin_huri_cli():
+    # The installer takes huri-cli's newest release that fits: no ref to check.
+    assert check(refs=REFS) == []
 
 
 def test_a_pre_release_or_non_canonical_package_version_is_refused():
@@ -132,7 +136,7 @@ def commit(repo, message):
     git(repo, "commit", "-q", "--allow-empty", "-m", message)
 
 
-def release(repo, version, refs="HURI_CORE_REF=0.4.1\nHURI_CLI_REF=0.1.1\n"):
+def release(repo, version, refs="HURI_CORE_REF=0.4.1\n"):
     """A commit at which events, hub and meta are all at `version`."""
     write(repo, "versions.env", "# refs\n" + refs)
     dist(repo, "meta", "huri-modules", version)
@@ -179,7 +183,7 @@ def test_the_release_pr_shows_what_merging_it_will_publish(repo, monkeypatch):
     code, out, summary = run(repo, monkeypatch, "pull_request", "refs/pull/1/merge")
     assert code == 0 and out["release"] == "false"
     assert (out["version"], out["previous"]) == ("0.3.0", "0.2.0")
-    assert (out["core"], out["cli"]) == ("0.4.1", "0.1.1")
+    assert out["core"] == "0.4.1" and "cli" not in out
     assert out["uploads"] == (
         "huri-events==0.3.0 huri-module-lips-sync==0.1.0 huri-modules==0.3.0"
     )
@@ -263,7 +267,7 @@ def test_a_blocked_release_pr_fails(repo, monkeypatch):
 
 def test_versions_env_on_dev_blocks_the_release_pr(repo, monkeypatch):
     release_pr(repo)
-    write(repo, "versions.env", "HURI_CORE_REF=dev\nHURI_CLI_REF=0.1.1\n")
+    write(repo, "versions.env", "HURI_CORE_REF=dev\n")
     commit(repo, "core on dev")
     code, _, summary = run(repo, monkeypatch, "pull_request")
     assert code == 1 and "HURI_CORE_REF is 'dev'" in summary

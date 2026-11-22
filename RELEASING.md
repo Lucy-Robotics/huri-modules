@@ -7,10 +7,9 @@ huri-core's. Releases are git tags `X.Y.Z` (no `v` prefix) on `main`'s merge
 commit; `dev` is the integration branch. The first release is `0.1.0`.
 
 A huri-modules release is a **tested set**: every package under `packages/`
-at the version in its own `pyproject.toml`, plus the refs of the other
-repositories they were all tested against together, in
-[`versions.env`](versions.env): huri-core (`HURI_CORE_REF`) and huri-cli
-(`HURI_CLI_REF`), the reference client the installer adds.
+at the version in its own `pyproject.toml`, plus the huri-core ref they were
+all tested against together, in [`versions.env`](versions.env)
+(`HURI_CORE_REF`).
 
 ### Package versions
 
@@ -93,17 +92,16 @@ core minor is under way (see step 5 below). Everything reads it:
   step 5 widens the ranges; in that window, read its log for failures other
   than the range checks.
 
-`HURI_CLI_REF`, a git ref of [HuRI-CLI](https://github.com/Lucy-Robotics/HuRI-CLI),
-the reference client: a use case of HuRI with its own repository, versions
-(tags `X.Y.Z`, first `0.1.0`) and CI, depending on `huri-core[client]` and
-`huri-events` by version range. A huri-cli release tag on `main`; on `dev`, a
-tag or huri-cli's `dev`. Only `./install.sh` reads it: it installs huri-cli
-from git at that ref (`HURI_CLI_REF=<ref>` overrides the file,
-`HURI_CLI_PATH=/path/to/huri-cli` installs a local checkout editable,
-`--no-cli` skips it). The Docker images do not carry the CLI. huri-cli's
-ranges must accept the core at `HURI_CORE_REF` and this repository's
-huri-events, or the installer's resolver fails: when a huri-events minor bump
-or a core minor moves, the matching huri-cli release comes first.
+[HuRI-CLI](https://github.com/Lucy-Robotics/HuRI-CLI), the reference client,
+is not pinned here: a use case of HuRI with its own repository, versions (tags
+`X.Y.Z`, on PyPI) and CI, depending on `huri-core[client]` and `huri-events` by
+version range. Only `./install.sh` installs it: its newest PyPI release whose
+ranges accept the huri-core and huri-events it just installed (they stay as
+installed), or none, with a warning, when no release supports that core yet
+(`HURI_CLI_PATH=/path/to/huri-cli` installs a local checkout editable,
+`--no-cli` skips it). The Docker images do not carry the CLI. A huri-modules
+release does not wait for a huri-cli release: when a core minor or a
+huri-events minor moves, the client follows in its own time.
 
 No git call of the installer (nor of `huri hub`, `check_registry.py` or CI)
 may prompt for credentials: a ref that cannot be read fails at once and names
@@ -132,9 +130,7 @@ after the huri-core release they target is tagged:
 
 1. On `dev`, open a release PR that:
    - sets `HURI_CORE_REF` in `versions.env` to the huri-core release tag
-     (`0.4.0`), and `HURI_CLI_REF` to the huri-cli release tag that supports
-     that core and this release's huri-events (`0.1.0`): both refs are tags in
-     a release, never a branch;
+     (`0.4.0`): a tag in a release, never a branch;
    - if huri-core's minor changed, moves every range to the new minor: the
      `huri-core` dependency of each `pyproject.toml` under `packages/`, the
      `huri_core` key of each
@@ -150,7 +146,7 @@ after the huri-core release they target is tagged:
 2. CI must be green on that PR: lint, `check_registry.py`, every package's
    tests and the full pipeline test (`tests/integration`), against the pinned
    core. Run the install workflow (`install.yml`, `workflow_dispatch`: it
-   installs huri-cli at `HURI_CLI_REF` too) and,
+   installs the newest huri-cli that supports that core too) and,
    when the GPU paths changed, `gpu.yml` and the GPU images (`docker.yml` with
    `gpu_images`).
 3. Merge it, then open the PR from `dev` into `main`, named `Release X.Y.Z`.
@@ -164,8 +160,8 @@ after the huri-core release they target is tagged:
    version is already tagged or already on PyPI; a package under `packages/`
    changed since the previous release tag while its version is already on PyPI
    (changed without a version bump: PyPI would silently keep the old code; a
-   package new since the previous tag counts as changed); `HURI_CORE_REF` or
-   `HURI_CLI_REF` is not a release tag; a dependency is a direct URL, which
+   package new since the previous tag counts as changed); `HURI_CORE_REF` is
+   not a release tag; a dependency is a direct URL, which
    PyPI refuses; or `tests/tooling/test_metapackage.py` fails. It also builds and
    `twine check`s every distribution. Its job summary lists what merging will
    publish: the tag, the GitHub release, and one row per package (`upload` or
@@ -174,16 +170,15 @@ after the huri-core release they target is tagged:
    would fail every other PR into `main`.
 4. Merge it. The Release workflow then tags `main`'s merge commit `X.Y.Z`
    (no `v` prefix), publishes the GitHub release (notes generated from the
-   merged pull requests since the previous tag, headed by the huri-core and
-   huri-cli refs it was tested against; edit them afterwards if needed), and
+   merged pull requests since the previous tag, headed by the huri-core ref
+   it was tested against; edit them afterwards if needed), and
    waits for a maintainer to approve the `pypi` environment before uploading
    every package whose version is not on PyPI yet, then the metapackage. It
    ends by installing `huri-modules[events,hub]==X.Y.Z` from PyPI and checking
    the versions. PyPI never accepts a version twice. A failed upload: "Re-run
    failed jobs" on that run; or, while `main` is still at the release commit,
    run the Release workflow by hand on `main`.
-5. On `dev`, leave `HURI_CORE_REF` at the released core tag (and
-   `HURI_CLI_REF` at its tag, or set it back to huri-cli's `dev`). Do **not** set
+5. On `dev`, leave `HURI_CORE_REF` at the released core tag. Do **not** set
    it back to `dev` on its own: core `dev` is bumped to the next minor's
    `.dev0` right after a core release, which is outside the `>=X.Y,<X.(Y+1)`
    ranges, so CI, the image builds and `./install.sh` would all fail. When work
