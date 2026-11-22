@@ -67,6 +67,9 @@ def _ago(iso: str | None, now: datetime | None = None) -> str:
 # The memories a session can use (see WorkingMemory), all on by default.
 MEMORIES = ("short", "working", "long")
 
+# Keep replica outages from growing every prompt and retry without limit.
+_MAX_PENDING_TURNS = 32
+
 
 class RAGDeploymentConfig(BaseModel):
     qdrant_url: str = "http://localhost:6333"
@@ -1098,6 +1101,13 @@ class RAG(ModuleWithHandle, ModuleWithId):
             evicted = self._record_turn(question_text, "".join(parts))
             if self._working:
                 self._folding.extend(evicted)
+                overflow = len(self._folding) - _MAX_PENDING_TURNS * 2
+                if overflow > 0:
+                    del self._folding[:overflow]
+                    print(
+                        f"[RAG] pending memory limit reached: discarded "
+                        f"{overflow // 2} oldest unfolded turn(s)"
+                    )
         # Outside the answer lock: the next question need not wait for it.
         if self._folding:  # also picks up what an earlier fold left
             fold = asyncio.create_task(self._fold_into_working_memory())

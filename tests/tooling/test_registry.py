@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / "registry.toml"
 spec = importlib.util.spec_from_file_location(
     "check_registry", ROOT / "check_registry.py"

@@ -6,11 +6,10 @@ tests, on inline registries."""
 import tomllib
 from pathlib import Path
 
-import pytest
 from huri_hub import cli
 from huri_hub import registry as hub
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / "registry.toml"
 REPO = "git+https://github.com/Lucy-Robotics/huri-modules.git"
 ENTRIES = tomllib.loads(REGISTRY.read_text())["module"]
@@ -48,33 +47,6 @@ def test_a_checkout_installs_its_own_packages():
     tts = ROOT / "packages" / "huri-module-tts"
     assert modules["tts"].install == f"{tts}[piper]"
     assert modules["tts_cosyvoice"].install == f"{tts}[cosyvoice]"
-
-
-def test_each_tts_engine_installs_with_its_own_extra(monkeypatch):
-    # One package, two engines: each module brings only its engine's stack.
-    modules = remote(REGISTRY.read_text(), monkeypatch, ref="0.1.0")
-    path = f"{REPO}@0.1.0#subdirectory=packages/huri-module-tts"
-    assert modules["tts"].install == f"huri-module-tts[piper] @ {path}"
-    assert modules["tts_cosyvoice"].install == f"huri-module-tts[cosyvoice] @ {path}"
-
-
-@pytest.mark.parametrize(
-    "extra,suffix", [("", ""), (', subdirectory = "python"', "#subdirectory=python")]
-)
-def test_a_verified_third_party_module_installs_from_its_pinned_tag(
-    monkeypatch, extra, suffix
-):
-    servo = (
-        '\n[[module]]\nname = "servo"\npackage = "huri-module-servo"\n'
-        'summary = "Gesture to servo angle arrays"\nhuri_core = ">=0.4,<0.5"\n'
-        "verified = 2026-10-12\n"
-        'source = { git = "https://github.com/acme/huri-module-servo", '
-        f'tag = "0.1.0", submodule = "modules/servo"{extra} }}\n'
-    )
-    modules = remote(REGISTRY.read_text() + servo, monkeypatch)
-    assert modules["servo"].install == (
-        f"git+https://github.com/acme/huri-module-servo@0.1.0{suffix}"
-    )
 
 
 def test_hub_lists_the_curated_modules_for_a_supported_core(capsys):

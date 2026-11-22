@@ -63,7 +63,7 @@ each pinning `<package>[<registry extra>]==<its version>`, plus `events`, `hub`
 and `all`. Its `version` **is** the huri-modules release (`0.1.1` is release
 `0.1.1`), so `huri-modules==X.Y.Z` installs exactly the set tagged `X.Y.Z`.
 It lives outside `packages/`, which holds the module and event packages only.
-`tests/test_metapackage.py` fails when a module, a package version or a
+`tests/tooling/test_metapackage.py` fails when a module, a package version or a
 registry `extra` changes without it.
 
 ### versions.env
@@ -145,7 +145,7 @@ after the huri-core release they target is tagged:
      already on PyPI (its pull requests should have bumped it, see
      [Package versions](#package-versions));
    - sets `meta/pyproject.toml`'s `version` to `X.Y.Z` and its pins to the
-     package versions (`tests/test_metapackage.py` checks the pins);
+     package versions (`tests/tooling/test_metapackage.py` checks the pins);
    - updates the compatibility table (here and in README.md).
 2. CI must be green on that PR: lint, `check_registry.py`, every package's
    tests and the full pipeline test (`tests/integration`), against the pinned
@@ -154,6 +154,10 @@ after the huri-core release they target is tagged:
    when the GPU paths changed, `gpu.yml` and the GPU images (`docker.yml` with
    `gpu_images`).
 3. Merge it, then open the PR from `dev` into `main`, named `Release X.Y.Z`.
+   `main` takes pull requests from `dev` only (the Release check fails
+   otherwise), merged with a merge commit, the only method its ruleset
+   allows: `dev` then always contains `main`, and the next release PR cannot
+   conflict.
    Its **Release** check (`.github/workflows/release.yml`) fails, naming the
    culprit, when the release would be incomplete: any distribution's version
    (`meta/` or `packages/`) is a pre-release or not canonical; the metapackage
@@ -162,7 +166,7 @@ after the huri-core release they target is tagged:
    (changed without a version bump: PyPI would silently keep the old code; a
    package new since the previous tag counts as changed); `HURI_CORE_REF` or
    `HURI_CLI_REF` is not a release tag; a dependency is a direct URL, which
-   PyPI refuses; or `tests/test_metapackage.py` fails. It also builds and
+   PyPI refuses; or `tests/tooling/test_metapackage.py` fails. It also builds and
    `twine check`s every distribution. Its job summary lists what merging will
    publish: the tag, the GitHub release, and one row per package (`upload` or
    `already on PyPI, skipped`) and the metapackage. Never merge a release PR

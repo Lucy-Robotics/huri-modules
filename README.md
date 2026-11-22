@@ -515,6 +515,8 @@ GPU ones ship `requirements-<variant>[.<module>].txt` pins next to it.
 ```sh
 make lint                              # black, isort, flake8, mypy (as CI; `make format` fixes the first two)
 make test                              # pytest: tests/ and packages/*/tests
+make bench                             # benchmarks: a spoken turn (models faked), the events' wire cost
+make bench-compare                     # the same against origin/dev (BASE=...), fails on a mean >25% slower; RELEASE=<tag> adds a report-only table
 make check                             # both
 python check_registry.py --run-tests   # the registry against its packages
 python scripts/check_links.py          # the pages' relative links and anchors
@@ -575,8 +577,9 @@ See [`packages/huri-module-stt/tests/test_stt.py`](packages/huri-module-stt/test
   (`client_template.yaml`); the installer writes `client_local.generated.yaml`
 - **deploy/** — the Docker images, `install_huri.sh`, a session smoke test and
   Helm values examples (`deploy/examples`); **helm/** — the KubeRay chart
-- **tests/** — the curated set's tests; **tests/integration** — the whole
-  curated pipeline in one session
+- **tests/** — the repo's own tests (each package's are in its `tests/`):
+  **contract/**, rules every package follows; **tooling/**, the repo's scripts
+  and shipped files; **integration/**, the whole curated pipeline in one session
 
 ## Modules as plugins
 

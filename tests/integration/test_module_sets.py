@@ -5,7 +5,7 @@ answer (module_set_problems) and writes the client config matching the one it
 accepts (client_config). Each of the 511 non-empty sets of the curated modules
 goes through the first; each accepted one, with the client config written for
 it, goes through the server's websocket endpoint in-process: real module
-classes, real bus, fake models (the fakes of test_full_pipeline.py).
+classes, real bus, fake models (fakes.py).
 """
 
 import asyncio
@@ -24,8 +24,7 @@ import yaml
 from huri_core.core.huri import HuRI
 from huri_core.core.plugins import load_events, load_modules
 from huri_core.testing import LocalHandle
-
-from .test_full_pipeline import (
+from tests.integration.fakes import (
     FakeEmotionModel,
     FakeGestures,
     FakeLLM,
