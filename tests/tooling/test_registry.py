@@ -92,8 +92,8 @@ def test_the_schema_is_huri_hubs(check):
         "has registry schema 3; this huri-hub reads schema 2: upgrade huri-hub, "
         "or use a huri-modules release built for it (HURI_MODULES_REF)"
     )
-    text = REGISTRY.read_text().replace(
-        'huri_core = ">=0.4,<0.5"', 'huri_core = "bogus"', 1
+    text = re.sub(
+        r'huri_core = "[^"]*"', 'huri_core = "bogus"', REGISTRY.read_text(), count=1
     )
     # Reported once, as malformed: the entry is there, not missing.
     problems = check(text)

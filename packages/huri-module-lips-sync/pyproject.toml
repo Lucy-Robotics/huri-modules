@@ -9,7 +9,7 @@ description = "HuRI module: lip sync, ARKit blend shapes from the voice (LAM Aud
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "huri-core[server]>=0.4,<0.5",
+  "huri-core[server]>=0.5.0.dev0,<0.6",
   "huri-events>=0.3,<0.4",
   "numpy>=1.26,<2",
 ]
@@ -28,7 +28,7 @@ lam = [
   "huggingface_hub>=0.23,<1",
   "scipy>=1.11,<2",
 ]
-piper = ["huri-module-tts[piper]>=0.2.1,<0.3", "piper-tts>=1.8,<1.9"]
+piper = ["huri-module-tts[piper]>=0.3,<0.4", "piper-tts>=1.8,<1.9"]
 dev = ["pytest>=8", "black>=24", "isort>=5", "flake8>=7", "flake8-pyproject>=1.2"]
 
 [project.entry-points."huri.modules"]

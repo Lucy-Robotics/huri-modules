@@ -50,7 +50,7 @@ def test_a_checkout_installs_its_own_packages():
 
 
 def test_hub_lists_the_curated_modules_for_a_supported_core(capsys):
-    argv = ["list", "--registry", str(REGISTRY), "--verified", "--core", "0.4.0"]
+    argv = ["list", "--registry", str(REGISTRY), "--verified", "--core", "0.5.0"]
     assert cli.main(argv, fetch=lambda url: None) == 0
     listed = {line.split()[0] for line in capsys.readouterr().out.splitlines()[:-1]}
     assert listed == {entry["name"] for entry in ENTRIES}
