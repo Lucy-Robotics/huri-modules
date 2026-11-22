@@ -1141,18 +1141,23 @@ class RAG(ModuleWithHandle, ModuleWithId):
             self._folding = [m for m in self._folding if all(m is not t for t in turns)]
 
     async def finalize(self) -> None:
-        for fold in list(self._folds):
-            fold.cancel()  # session over: its turns stay in _folding, saved below
-        if not self._long:
-            return
-        async with self._working_lock:
-            # Turns no fold finished are still in _folding.
-            history = self._folding + self.history
-            if not history and not self.working:
+        # huri-core does not cancel the bus runs before calling this, and the
+        # turn of an answer still streaming is recorded only once the stream
+        # ends: wait for it under the answer lock, so the save below holds the
+        # session's last exchange instead of missing it.
+        async with self._answer_lock:
+            for fold in list(self._folds):
+                fold.cancel()  # session over: its turns stay in _folding, saved below
+            if not self._long:
                 return
-            try:
-                await self._handle.save_conversation.remote(
-                    self._user_id or "anonymous", history, self.working
-                )
-            except Exception:
-                print(f"[RAG] finalize failed:\n{traceback.format_exc()}")
+            async with self._working_lock:
+                # Turns no fold finished are still in _folding.
+                history = self._folding + self.history
+                if not history and not self.working:
+                    return
+                try:
+                    await self._handle.save_conversation.remote(
+                        self._user_id or "anonymous", history, self.working
+                    )
+                except Exception:
+                    print(f"[RAG] finalize failed:\n{traceback.format_exc()}")

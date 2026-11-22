@@ -229,6 +229,28 @@ def test_a_session_ending_during_a_fold_saves_the_turns_being_folded():
     assert not working
 
 
+def test_a_session_ending_during_an_answer_saves_that_exchange():
+    async def session():
+        fake = GatedLLM()
+        harness = _harness(fake)
+        a = _ask(harness, "a")
+        await asyncio.sleep(0)
+        assert fake.log == ["start a"]  # still streaming
+        # huri-core does not cancel the bus runs: finalize is called while the
+        # answer streams, and waits for it to be recorded, not saved before it.
+        done = asyncio.create_task(harness.finalize())
+        await asyncio.sleep(0.01)
+        assert fake.saved is None
+        fake.answer_gate.set()
+        await asyncio.gather(a, done)
+        return fake
+
+    fake = asyncio.run(session())
+    _, history, working = fake.saved
+    assert [m["content"] for m in history] == ["a", "re: a"]
+    assert not working
+
+
 def _turn(question):
     return [
         {"role": "user", "content": question},
