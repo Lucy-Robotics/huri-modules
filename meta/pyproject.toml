@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 # each pinning the exact package version this huri-modules release was tested
 # with. `pip install "huri-modules[vad,stt,tts]"` installs those modules and
 # nothing else, so the server sees only what was picked.
-# tests/test_metapackage.py keeps it in step with registry.toml and packages/.
+# tests/tooling/test_metapackage.py keeps it in step with registry.toml and packages/.
 [project]
 name = "huri-modules"
 version = "0.2.0"  # = the huri-modules release (RELEASING.md)

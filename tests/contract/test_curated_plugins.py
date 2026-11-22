@@ -16,7 +16,7 @@ from huri_core.core.dataclasses.config import ModuleConfig
 from huri_core.core.factory import ModuleFactory
 from huri_core.core.module import Module
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 CURATED = {
     "vad",
     "stt",

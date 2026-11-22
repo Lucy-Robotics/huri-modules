@@ -8,7 +8,7 @@ from pathlib import Path
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 META = tomllib.loads((ROOT / "meta" / "pyproject.toml").read_text())["project"]
 REGISTRY = tomllib.loads((ROOT / "registry.toml").read_text())
 VERSIONS = {

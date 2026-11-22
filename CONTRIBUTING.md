@@ -16,7 +16,7 @@ specific to huri-modules.
 - **One package, one version, one bump per release**: the first pull request
   that changes a package under `packages/` after its last release bumps the
   `version` in its `pyproject.toml`, and its pins in `meta/pyproject.toml`
-  (`tests/test_metapackage.py` checks them). If that version is not on PyPI
+  (`tests/tooling/test_metapackage.py` checks them). If that version is not on PyPI
   yet, leave it, unless your change needs a bigger bump than the pending one:
   a minor change raises a pending patch to the minor. A change to the wire
   format of `huri-events` is a minor bump while `0.x`
