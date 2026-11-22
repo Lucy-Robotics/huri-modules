@@ -125,9 +125,8 @@ class STT(ModuleWithHandle):
         block_duration: float = 0.020,  # s
         transcribe_window: float = 2.0,  # s
         transcribe_step: float = 1.0,  # s
-        **kwargs,
     ):
-        super().__init__(_handle=_handle, **kwargs)
+        super().__init__(_handle=_handle)
 
         self.language = language
 
