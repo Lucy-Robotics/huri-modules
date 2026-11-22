@@ -10,7 +10,7 @@ import pytest
 from packaging.requirements import Requirement as PepRequirement
 from packaging.utils import canonicalize_name
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location(
     "module_requirements", ROOT / "scripts" / "module_requirements.py"
 )
@@ -164,11 +164,11 @@ def test_piper_never_gets_cosyvoice_s_stack(variant):
 
 @pytest.mark.parametrize("variant", mr.VARIANTS)
 def test_the_aggregators_stay_light(variant):
-    """eag and qag only join events: planning them without emo / rag brings
-    neither the classifier's torch stack nor rag's retrieval libraries."""
+    """eag, emo_react and qag only join events: planning them without emo / rag
+    brings neither the classifier's torch stack nor rag's retrieval libraries."""
     heavy = {"torch", "torchaudio", "transformers", "sentence-transformers"}
     heavy |= {"qdrant-client", "httpx", "pypdf", "semantic-chunker"}
-    assert not heavy & names(merged(variant, ["eag", "qag"]))
+    assert not heavy & names(merged(variant, ["eag", "emo_react", "qag"]))
     assert {"torch", "transformers"} <= names(merged(variant, ["emo"]))
     assert {"qdrant-client", "sentence-transformers"} <= names(merged(variant, ["rag"]))
 

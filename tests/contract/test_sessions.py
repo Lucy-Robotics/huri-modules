@@ -16,7 +16,7 @@ from huri_core.core.compat import check_session
 from huri_core.core.dataclasses.config import ClientConfig
 from huri_core.core.plugins import installed_modules, load_events, load_modules
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = ROOT / "config" / "client_template.yaml"
 
 AUDIO = {"block_duration": 0.03}

@@ -30,8 +30,7 @@ from huri_core.core.plugins import (
     load_modules,
 )
 from huri_core.testing import LocalHandle
-
-from .test_full_pipeline import FakeLLM, FakeVoice
+from tests.integration.fakes import FakeLLM, FakeVoice
 
 ROOT = Path(__file__).resolve().parents[2]
 Server = HuRI.func_or_class.__mro__[1]

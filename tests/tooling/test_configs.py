@@ -7,7 +7,7 @@ import pytest
 import yaml
 from huri_rag.rag import RAGDeploymentConfig
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 CONFIGS = sorted((ROOT / "config").glob("huri*.yaml"))
 CONFIGS = [p for p in CONFIGS if not p.name.endswith(".generated.yaml")]
 

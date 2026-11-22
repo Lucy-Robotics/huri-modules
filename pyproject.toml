@@ -45,11 +45,15 @@ omit = ["*/tests/*"]
 [tool.pytest.ini_options]
 testpaths = ["tests", "packages/*/tests"]
 # Benchmarks (tests/benchmarks, packages/*/tests/benchmarks) are slow and noisy:
-# only `make bench` runs them.
-addopts = "--ignore-glob=*/benchmarks/*"
+# only `make bench` runs them. Test files are imported by path, so two packages
+# can each have a tests/test_x.py (no __init__.py needed, no clash with the repo's tests).
+addopts = "--ignore-glob=*/benchmarks/* --import-mode=importlib"
 # The distributions in this repo (packages/*), importable from a
 # plain checkout; CI and the installer also install them editable.
+# "." gives tests.integration.fakes; the VAD tests' dir gives speech_signals.
 pythonpath = [
+  ".",
+  "packages/huri-module-vad/tests",
   "packages/huri-events",
   "packages/huri-module-vad",
   "packages/huri-module-stt",
