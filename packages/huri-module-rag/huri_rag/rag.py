@@ -1087,7 +1087,8 @@ class RAG(ModuleWithHandle, ModuleWithId):
             except asyncio.CancelledError as exc:
                 # Ray Serve does not pass a caller's cancel on to the replica
                 stream.cancel()
-                # Append a marker so the model knows the previous response was interrupted.
+                # Append a marker so the model knows the previous response
+                # was interrupted.
                 parts.append("[interrupted]")
                 cancellation_exc = exc
             except GeneratorExit:
