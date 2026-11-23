@@ -14,7 +14,7 @@ release, so a server sees only the modules you picked. The version of
 `huri-modules` is the release of the
 [huri-modules repository](https://github.com/Lucy-Robotics/huri-modules), which
 lists what each release contains and the huri-core it supports
-(huri-modules 0.1.x: huri-core 0.4.x).
+(huri-modules 0.3.x: huri-core 0.5.x).
 
 | Extra | Module | Package |
 |---|---|---|

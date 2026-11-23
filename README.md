@@ -214,6 +214,7 @@ The installer, the Docker images and CI all read that one file
 |---|---|
 | 0.1.x | 0.4.x |
 | 0.2.x | 0.4.x |
+| 0.3.x | 0.5.x |
 
 CI tests every change against the pinned core (blocking) and against
 huri-core's `dev` branch (non-blocking), so a breaking core change shows up
@@ -482,9 +483,9 @@ the modules picked are installed, so the server sees nothing else
 
 ```sh
 # a server with three modules (each module brings huri-core[server] and huri-events)
-pip install "huri-modules[vad,stt,tts]==0.1.1"
+pip install "huri-modules[vad,stt,tts]==0.3.0"
 # a client: the SDK, the curated topics and the reference CLI (no Ray)
-pip install "huri-core[client]>=0.4,<0.5" "huri-events>=0.1,<0.2" huri-cli
+pip install "huri-core[client]>=0.5,<0.6" "huri-events>=0.3,<0.4" huri-cli
 ```
 
 pip installs the default PyTorch build: for a GPU (CUDA, ROCm), for CosyVoice,
@@ -513,8 +514,8 @@ pip install "huri-core[server] @ $CORE" \
 
 From git, give huri-core, huri-events and huri-cli as git URLs on the same
 command line as what depends on them, so pip takes them from git and not from
-an index. Use release tags, a huri-core `0.4.x` with a
-huri-modules `0.2.x` (see [Versions](#versions-and-compatibility)); without a
+an index. Use release tags, a huri-core `0.5.x` with a
+huri-modules `0.3.x` (see [Versions](#versions-and-compatibility)); without a
 ref pip takes the repository's default branch. `[server]` is Ray Serve + FastAPI and the pins that
 keep them working; each module package declares its own dependencies, and the
 GPU ones ship `requirements-<variant>[.<module>].txt` pins next to it.
@@ -642,9 +643,9 @@ name = "servo"                     # its huri.modules entry point name
 summary = "Gesture to servo angle arrays"
 input = { topic = "huri.motion", event = "huri_events.motion:Motion" }
 output = { topic = "acme.servo_angles", event = "huri_events_servo:ServoAngles" }  # omit for a terminal module
-events = ["huri-events>=0.2,<0.3", "huri-events-servo>=0.1,<0.2"]                  # optional
+events = ["huri-events>=0.3,<0.4", "huri-events-servo>=0.1,<0.2"]                  # optional
 requires = { gpu = false, actuation = false }                                      # optional
-huri_core = ">=0.4,<0.5"
+huri_core = ">=0.5,<0.6"
 ```
 
 At startup the server checks every enabled module that has one: its topics and
