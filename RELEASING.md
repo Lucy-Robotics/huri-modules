@@ -200,8 +200,8 @@ GitHub publisher with owner `Lucy-Robotics`, repository `huri-modules`,
 workflow `release.yml` and environment `pypi`:
 
 - `huri-modules` (the metapackage), `huri-events` and `huri-hub`;
-- every `huri-module-*` under `packages/` (`huri-module-emo`, `-mov`, `-rag`,
-  `-stt`, `-tag`, `-tts`, `-vad` today).
+- every `huri-module-*` under `packages/` (`huri-module-emo`, `-lips-sync`, `-mov`, `-rag`,
+  `-stt`, `-tag`, `-think`, `-tts`, `-vad` today).
 
 A package that is not on PyPI yet needs a *pending* publisher (pypi.org →
 Your account → Publishing, same values, with the project name) before the
