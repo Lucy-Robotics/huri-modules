@@ -1064,7 +1064,10 @@ class RAG(ModuleWithHandle, ModuleWithId):
         Packages _user_id + question, sends to the stateless RAGHandle.
         """
         question_text = data.transcript.text
-
+        evicted = []
+        cancellation_exc = (
+            None  # Store the exception to re-raise after releasing _answer_lock
+        )
         emotion = data.emotion
         async with self._answer_lock:
             query = RAGQuery(
@@ -1091,12 +1094,19 @@ class RAG(ModuleWithHandle, ModuleWithId):
                 async for delta in stream:
                     parts.append(delta)
                     yield Token(text=delta, end=False)
-            except (asyncio.CancelledError, GeneratorExit):
+            except asyncio.CancelledError as exc:
                 # Ray Serve does not pass a caller's cancel on to the replica
                 stream.cancel()
+                # Append a marker so the model knows the previous response
+                # was interrupted.
+                parts.append("[interrupted]")
+                cancellation_exc = exc
+            except GeneratorExit:
+                stream.cancel()
                 raise
-            yield Token(text="", end=True)
-
+            # Emit the end token only when the stream completed normally.
+            if cancellation_exc is None:
+                yield Token(text="", end=True)
             evicted = self._record_turn(question_text, "".join(parts))
             if self._working:
                 self._folding.extend(evicted)
@@ -1113,6 +1123,9 @@ class RAG(ModuleWithHandle, ModuleWithId):
             self._folds.add(fold)
             fold.add_done_callback(self._folds.discard)
             await asyncio.shield(fold)
+
+        if cancellation_exc is not None:
+            raise cancellation_exc
 
     def _record_turn(self, question: str, answer: str) -> list[dict]:
         answer = answer.strip()

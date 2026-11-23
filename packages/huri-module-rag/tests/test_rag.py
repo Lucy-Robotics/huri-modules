@@ -109,6 +109,12 @@ def test_an_interrupted_rag_answer_stops_on_the_replica():
         with pytest.raises(asyncio.CancelledError):
             await task
         assert stream.cancel_called.is_set()
+        assert rag.history[-2]["role"] == "user"
+        assert rag.history[-2]["content"] == "What is HuRI?"
+
+        assert rag.history[-1]["role"] == "assistant"
+        assert "Hi" in rag.history[-1]["content"]
+        assert "[interrupted]" in rag.history[-1]["content"]
 
     asyncio.run(run())
 
