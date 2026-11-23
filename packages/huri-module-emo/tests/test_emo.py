@@ -1,7 +1,7 @@
 import asyncio
-import pytest
 
 import numpy as np
+import pytest
 from huri_events.speech import Voice
 
 from huri_core.testing import LocalHandle, ModuleHarness

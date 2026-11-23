@@ -2,8 +2,8 @@
 
 import asyncio
 
-import pytest
 import numpy as np
+import pytest
 from huri_events.audio import Audio
 from huri_events.motion import Motion
 from huri_mov.module import MOV
