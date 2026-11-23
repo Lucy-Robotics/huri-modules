@@ -395,6 +395,7 @@ class MOV(ModuleWithHandle):
         try:
             motion: Motion = await response
         except asyncio.CancelledError:
+            # Ray Serve does not pass a caller's cancel on to the replica
             response.cancel()
             raise
         total_frames = motion.poses.shape[0]

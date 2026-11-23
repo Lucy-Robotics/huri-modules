@@ -148,6 +148,7 @@ class EMO(ModuleWithHandle):
             try:
                 result = await response
             except asyncio.CancelledError:
+                # Ray Serve does not pass a caller's cancel on to the replica
                 response.cancel()
                 raise
             async with self.lock:
