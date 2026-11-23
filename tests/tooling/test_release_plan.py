@@ -171,10 +171,10 @@ def run(tmp_path, monkeypatch, event, ref="refs/heads/main", released=ON_PYPI, n
 
 
 def release_pr(repo):
-    """0.3.0: huri-events bumped, huri-hub untouched, huri-module-lips-sync new."""
+    """0.3.0: huri-events bumped, huri-hub untouched, huri-module-lipsync new."""
     release(repo, "0.3.0")
     dist(repo, "packages/huri-hub", "huri-hub", "0.2.0")
-    dist(repo, "packages/huri-module-lips-sync", "huri-module-lips-sync", "0.1.0")
+    dist(repo, "packages/huri-module-lipsync", "huri-module-lipsync", "0.1.0")
     commit(repo, "Release 0.3.0")
 
 
@@ -185,7 +185,7 @@ def test_the_release_pr_shows_what_merging_it_will_publish(repo, monkeypatch):
     assert (out["version"], out["previous"]) == ("0.3.0", "0.2.0")
     assert out["core"] == "0.4.1" and "cli" not in out
     assert out["uploads"] == (
-        "huri-events==0.3.0 huri-module-lips-sync==0.1.0 huri-modules==0.3.0"
+        "huri-events==0.3.0 huri-module-lipsync==0.1.0 huri-modules==0.3.0"
     )
     rows = [line for line in summary.splitlines() if line.startswith("| ")]
     assert rows[1:] == [
@@ -193,7 +193,7 @@ def test_the_release_pr_shows_what_merging_it_will_publish(repo, monkeypatch):
         "| GitHub release `0.3.0` | publish |",
         "| PyPI `huri-events 0.3.0` | upload |",
         "| PyPI `huri-hub 0.2.0` | already on PyPI, skipped |",
-        "| PyPI `huri-module-lips-sync 0.1.0` | upload (new project: needs its "
+        "| PyPI `huri-module-lipsync 0.1.0` | upload (new project: needs its "
         "pending publisher first) |",
         "| PyPI `huri-modules 0.3.0` | upload |",
     ]
@@ -207,9 +207,8 @@ def test_several_new_projects_warn_about_the_one_pending_publisher_at_a_time(
     commit(repo, "think")
     code, out, summary = run(repo, monkeypatch, "pull_request")
     assert code == 0 and out["release"] == "false"
-    assert (
-        "Warning: 2 new PyPI projects (huri-module-lips-sync, huri-module-think)"
-        in (summary)
+    assert "Warning: 2 new PyPI projects (huri-module-lipsync, huri-module-think)" in (
+        summary
     )
     assert "one pending publisher at a time" in summary
 
@@ -251,10 +250,10 @@ def test_a_package_changed_without_a_version_bump_blocks_the_release_pr(
 
 def test_a_package_new_since_the_previous_release_counts_as_changed(repo, monkeypatch):
     release_pr(repo)
-    released = ON_PYPI + ("huri-module-lips-sync==0.1.0",)
+    released = ON_PYPI + ("huri-module-lipsync==0.1.0",)
     code, _, summary = run(repo, monkeypatch, "pull_request", released=released)
     assert code == 1
-    assert "huri-module-lips-sync changed without a version bump" in summary
+    assert "huri-module-lipsync changed without a version bump" in summary
 
 
 def test_a_blocked_release_pr_fails(repo, monkeypatch):
@@ -295,7 +294,7 @@ def test_a_manual_run_at_the_tagged_commit_resumes_the_upload(repo, monkeypatch)
     )
     assert code == 0
     assert (out["release"], out["create"], out["version"]) == ("true", "false", "0.3.0")
-    assert out["uploads"] == "huri-module-lips-sync==0.1.0 huri-modules==0.3.0"
+    assert out["uploads"] == "huri-module-lipsync==0.1.0 huri-modules==0.3.0"
 
 
 def test_a_manual_run_on_main_after_the_release_commit_is_refused(repo, monkeypatch):

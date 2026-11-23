@@ -66,11 +66,11 @@ extra = "model"
 
 [[module]]
 name = "lips"
-package = "huri-module-lips-sync"
+package = "huri-module-lipsync"
 summary = "Lip sync: ARKit blend shapes in step with the voice (LAM Audio2Expression), GPU or CPU"
 huri_core = ">=0.5,<0.6"
 verified = 2026-11-10
-source = { path = "packages/huri-module-lips-sync" }
+source = { path = "packages/huri-module-lipsync" }
 extra = "lam"
 
 [[module]]
@@ -167,11 +167,11 @@ extra = "piper"
 
 [[module]]
 name = "tts_phonemes"
-package = "huri-module-lips-sync"
+package = "huri-module-lipsync"
 summary = "Piper text to speech whose audio carries its phoneme timings, for exact lip sync"
 huri_core = ">=0.5,<0.6"
 verified = 2026-11-10
-source = { path = "packages/huri-module-lips-sync" }
+source = { path = "packages/huri-module-lipsync" }
 extra = "piper"
 
 [[module]]

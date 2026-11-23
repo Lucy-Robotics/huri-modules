@@ -3,7 +3,7 @@ requires = ["setuptools>=64,<82"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "huri-module-lips-sync"
+name = "huri-module-lipsync"
 version = "0.1.0"
 description = "HuRI module: lip sync, ARKit blend shapes from the voice (LAM Audio2Expression), on a GPU or a CPU"
 readme = "README.md"
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Lucy-Robotics/huri-modules/tree/main/packages/huri-module-lips-sync"
+Homepage = "https://github.com/Lucy-Robotics/huri-modules/tree/main/packages/huri-module-lipsync"
 Repository = "https://github.com/Lucy-Robotics/huri-modules"
 Issues = "https://github.com/Lucy-Robotics/huri-modules/issues"
 
