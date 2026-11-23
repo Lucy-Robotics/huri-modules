@@ -30,8 +30,7 @@ from huri_core.core.plugins import (
     load_modules,
 )
 from huri_core.testing import LocalHandle
-
-from .test_full_pipeline import FakeLLM, FakeVoice
+from tests.integration.fakes import FakeLLM, FakeVoice
 
 ROOT = Path(__file__).resolve().parents[2]
 Server = HuRI.func_or_class.__mro__[1]
@@ -111,7 +110,7 @@ def new_modules(tmp_path, monkeypatch):
             summary = "The answer as subtitles"
             input = {{ topic = "huri.token", event = "huri_events.text:Token" }}
             output = {{ topic = "acme.subtitle", event = "acme_subtitles:Subtitle" }}
-            events = ["huri-events>=0.1,<0.3"]
+            events = ["huri-events>=0.1,<0.4"]
             requires = {{ gpu = false, actuation = false }}
             huri_core = {curated_core_range()}
             """))

@@ -69,6 +69,72 @@ def test_streamed_audio_is_timed_and_ends_with_a_marker():
     assert audio[-1].end and not audio[0].end
 
 
+def test_ending_a_piper_session_that_never_streamed_leaves_no_state_on_the_replica():
+    async def run():
+        h = handle()
+        await h.start_session("s")
+        await h.push_text("s", "Hello there", False)
+        await h.end_session("s")
+        return h
+
+    h = asyncio.run(run())
+    assert "s" not in h._buffers and "s" not in h._queues
+
+
+def test_ending_a_piper_session_ends_its_running_audio_stream():
+    async def run():
+        h = handle()
+        await h.start_session("s")
+        await h.push_text("s", "Hello there", False)  # buffered, must not be spoken
+        stream = asyncio.create_task(_collect(h.stream_audio("s")))
+        await asyncio.sleep(0)  # let the stream block on its empty queue
+        await h.end_session("s")
+        return await asyncio.wait_for(stream, 1)
+
+    audio = asyncio.run(run())
+    assert [a.end for a in audio] == [True]
+
+
+def test_ending_a_piper_session_twice_is_harmless():
+    async def run():
+        h = handle()
+        await h.start_session("s")
+        await h.end_session("s")
+        await h.end_session("s")
+        await h.end_session("unknown")
+
+    asyncio.run(run())
+
+
+def test_a_piper_stream_opened_for_an_ended_session_yields_nothing():
+    async def run():
+        h = handle()
+        await h.start_session("s")
+        await h.end_session("s")
+        audio = await asyncio.wait_for(_collect(h.stream_audio("s")), 1)
+        return h, audio
+
+    h, audio = asyncio.run(run())
+    assert audio == []
+    assert "s" not in h._buffers and "s" not in h._queues
+
+
+def test_text_pushed_to_an_ended_piper_session_is_ignored():
+    async def run():
+        h = handle()
+        await h.start_session("s")
+        await h.end_session("s")
+        await h.push_text("s", "Hello there", False)
+        return h
+
+    h = asyncio.run(run())
+    assert "s" not in h._buffers and "s" not in h._queues
+
+
+async def _collect(stream):
+    return [a async for a in stream]
+
+
 def test_the_module_drives_the_deployment_end_to_end():
     harness = ModuleHarness(PiperTTS, handle=LocalHandle(handle()))
 

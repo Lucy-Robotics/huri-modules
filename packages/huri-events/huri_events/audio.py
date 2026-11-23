@@ -1,6 +1,7 @@
 import logging
 import struct
 from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -21,6 +22,7 @@ class Audio(EventData[bytes]):
     sample_rate: int
     end: bool = False
     pts: float = 0.0  # presentation timestamp in seconds from utterance start
+    phonemes: Optional[List[Tuple[str, float, float]]] = None
 
     def to_wire(self) -> bytes:
         logger.info(

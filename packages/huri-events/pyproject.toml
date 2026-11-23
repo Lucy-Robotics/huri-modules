@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "huri-events"
-version = "0.2.0"
+version = "0.3.0"
 description = "The curated HuRI event vocabulary: the huri.* topics and their wire formats"
 readme = "README.md"
 requires-python = ">=3.10"
 # Light on purpose: a client decodes every curated topic with this and
 # huri-core[client], no torch, no ray.
 dependencies = [
-  "huri-core>=0.4,<0.5",
+  "huri-core>=0.5,<0.6",
   "numpy>=1.26,<2",
 ]
 
@@ -22,10 +22,12 @@ dependencies = [
 "huri.voice" = "huri_events.speech:Voice"
 "huri.transcript" = "huri_events.speech:Transcript"
 "huri.emotion" = "huri_events.emotion:Emotion"
+"huri.emotion.out" = "huri_events.emotion:Expression"
 "huri.partial_question" = "huri_events.question:PartialQuestion"
 "huri.question" = "huri_events.question:RAGQuestion"
 "huri.token" = "huri_events.text:Token"
 "huri.motion" = "huri_events.motion:Motion"
+"huri.lips.face" = "huri_events.face:FaceWeights"
 
 [tool.setuptools.packages.find]
 include = ["huri_events*"]

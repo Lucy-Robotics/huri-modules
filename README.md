@@ -27,8 +27,8 @@ lives in its own repository and is installed from git at the `HURI_CORE_REF` in
 [`versions.env`](versions.env) (see [Versions](#versions-and-compatibility)).
 The reference command-line client,
 [HuRI-CLI](https://github.com/Lucy-Robotics/HuRI-CLI), is a use case of HuRI
-with its own repository and releases; the installer adds it, at the
-`HURI_CLI_REF` in the same file.
+with its own repository and releases; the installer adds its newest release
+that supports the installed huri-core (it is not pinned here).
 To write a module of your own, start from
 [`huri-plugin-template`](https://github.com/Lucy-Robotics/huri-plugin-template).
 
@@ -56,7 +56,7 @@ host, or one that brings its own client, skips it with `./install.sh --no-cli`.
 **Use the installer, not a bare `pip install`.** It picks the right torch build
 for your GPU, applies `constraints.txt` (without which every Ray Serve replica
 crashes — see the comments in that file), creates the virtualenv, installs
-huri-core and huri-cli at the pinned refs, downloads the models and writes a
+huri-core at the pinned ref and the newest huri-cli that supports it, downloads the models and writes a
 Serve config that matches your hardware. The manual path is documented
 [below](#usage-without-the-installer) for people who need it.
 
@@ -111,6 +111,10 @@ works on it. Nothing here is aspirational — these are measured outcomes:
 | **RAG / LLM** (Ollama)                                     | ✅ tier picked from free RAM     | ✅           | ✅                                        |
 | **EMO** (prosody)                                          | ✅ always CPU                    | ✅           | ✅                                        |
 | **MOV / gesture** (EMAGE)                                  | ❌ slower than realtime          | ✅           | ❌ not in the ROCm build                  |
+| **THINK** (generated motion, Piper voice) ¹                | ✅ no GPU needed                 | ✅           | ✅                                        |
+| **LIPS** (LAM Audio2Expression) ¹                          | ✅ ONNX int8, ~10x realtime      | ⚠️ not tested yet | ✅ torch, ~23x realtime              |
+
+¹ Not planned by the installer yet: see [The curated modules](#the-curated-modules).
 
 So **a machine with no GPU at all still gets voice in and voice out** — that is
 the point of Piper being the default. A GPU buys faster STT, and on NVIDIA it
@@ -150,9 +154,11 @@ rejected with a `session_error` naming both sets.
 | [`huri-module-vad`](packages/huri-module-vad) | `vad` | detects speech in microphone frames (WebRTC VAD) |
 | [`huri-module-stt`](packages/huri-module-stt) | `stt` | transcribes speech with faster-whisper (CPU or GPU) |
 | [`huri-module-tag`](packages/huri-module-tag) | `tag` | stitches overlapping transcript passes into one sentence |
-| [`huri-module-emo`](packages/huri-module-emo) | `emo`, `eag` | estimates the emotion of speech from its prosody, and aggregates it over an utterance |
+| [`huri-module-emo`](packages/huri-module-emo) | `emo`, `eag`, `emo_react`, `emo_out` | estimates the emotion of speech from its prosody, and aggregates it over an utterance; decides the emotion HuRI expresses (`huri.emotion.out`): a reaction to the user's emotion, then the emotion of each sentence of the reply |
 | [`huri-module-rag`](packages/huri-module-rag) | `rag`, `qag` | answers from memory with an LLM, streaming tokens, told how the user sounded; joins a transcript and its emotion into a question, without waiting for the emotion (`mode: parallel`, the default) or after it (`sequential`); ingestion and memory tools |
 | [`huri-module-mov`](packages/huri-module-mov) | `mov` | SMPL-X co-speech gestures (EMAGE, vendored model code) |
+| [`huri-module-think`](packages/huri-module-think) | `think`, `think_say`, `think_token`, `think_stop` | fills the wait between a question and its answer: `think` streams generated SMPL-X thinking poses (`huri.motion`), `think_say` thinks aloud ("hmm...", "let me think about that") in the TTS's Piper voice (extra `piper`); `think_token` and `think_stop` silence them when the answer is written, then heard. No GPU |
+| [`huri-module-lipsync`](packages/huri-module-lipsync) | `lips`, `tts_phonemes` | lip sync: `lips` streams 52 ARKit blend shape weights at 30 fps in step with the voice (`huri.lips.face`), from LAM Audio2Expression on a GPU or a CPU (extra `lam`); `tts_phonemes` is Piper text to speech whose audio carries its phoneme timings, for exact lip sync, wired instead of `tts` (extra `piper`) |
 | [`huri-module-tts`](packages/huri-module-tts) | `tts`, `tts_cosyvoice` | speaks the reply: `tts` is the default engine, Piper (ONNX, any CPU; extra `piper`); `tts_cosyvoice` clones a voice with CosyVoice3 (NVIDIA; extra `cosyvoice`), wired instead of `tts` |
 | [`huri-hub`](packages/huri-hub) | — | `huri hub`: finds and installs modules (a tool, not in the registry; it reads it) |
 
@@ -164,7 +170,10 @@ package whose modules need different stacks gives each module an extra
 `huri-module-tts[piper]` brings Piper's and `[cosyvoice]` CosyVoice's;
 `huri-module-emo[model]` is `emo`'s classifier (torch, transformers) and
 `huri-module-rag[rag]` is `rag`'s retrieval stack, which their aggregators
-`eag` and `qag` do not need. Without a checkout, the
+`eag` and `qag` do not need; `huri-module-think[piper]` is `think_say`'s voice,
+and `huri-module-lipsync[lam]` is `lips`' model. The installer does not plan
+`think` and `lips` yet (`--modules` does not know them): install and enable them
+by hand, as each package's README shows. Without a checkout, the
 [`huri-modules` metapackage](meta/README.md) picks modules by name from PyPI
 (`pip install "huri-modules[emo,eag]"`, see
 [Installing as packages](#installing-as-packages-without-a-checkout)); from git,
@@ -191,12 +200,13 @@ reads the registry from.
 
 This repository has its own semver, tagged `X.Y.Z` (no `v`) on `main`; `dev`
 is the integration branch. A release is a tested set: every package of
-`packages/` at its own version, plus the refs of the other repositories in
+`packages/` at its own version, plus the huri-core ref in
 [`versions.env`](versions.env) they were all tested against: `HURI_CORE_REF`,
-the huri-core ref — a core release tag on `main`; on `dev`, that tag too, or
-huri-core's `dev` while the modules follow the next core minor (with their
-ranges moved to it in the same change) — and `HURI_CLI_REF`, the huri-cli ref
-the installer adds (a huri-cli release tag on `main`, `dev` or a tag on `dev`).
+a core release tag on `main`; on `dev`, that tag too, or huri-core's `dev`
+while the modules follow the next core minor (with their ranges moved to it in
+the same change). huri-cli is not pinned: the installer adds its newest release
+whose ranges accept the installed huri-core and huri-events, or none (with a
+warning) when no release supports that core yet.
 The installer, the Docker images and CI all read that one file
 (shell-sourceable `KEY=value` lines: `. ./versions.env`).
 
@@ -204,6 +214,7 @@ The installer, the Docker images and CI all read that one file
 |---|---|
 | 0.1.x | 0.4.x |
 | 0.2.x | 0.4.x |
+| 0.3.x | 0.5.x |
 
 CI tests every change against the pinned core (blocking) and against
 huri-core's `dev` branch (non-blocking), so a breaking core change shows up
@@ -217,8 +228,8 @@ request; it also builds the sdist and wheel of every package under
 To develop huri-core and the modules together, point the installer at a local
 checkout instead of the git ref: `HURI_CORE_PATH=../huri-core ./install.sh`
 installs it editable (and `HURI_CORE_REF=<ref> ./install.sh` picks another ref).
-The same goes for the client: `HURI_CLI_PATH=../huri-cli` or
-`HURI_CLI_REF=<ref>`. The environment always wins over `versions.env`.
+The same goes for the client: `HURI_CLI_PATH=../huri-cli`. The environment
+always wins over `versions.env`.
 
 The installer never lets git prompt for credentials: a repository it cannot
 read (missing, private, or a ref that does not exist) stops the install with
@@ -276,7 +287,7 @@ It generates:
 | Path                                             | What                                              |
 | ------------------------------------------------ | ------------------------------------------------- |
 | `config/huri_local.generated.yaml`               | Ray Serve config for this machine                 |
-| `config/client_local.generated.yaml`             | matching session, plus huri-cli's `cli:` section  |
+| `config/client_local.generated.yaml`             | matching session, `log:` (with vad), `cli:`    |
 | `.huri-local/huri.env`                           | the same runtime env vars as a plain `.env`       |
 | `.huri-local/secrets.env`                        | LLM API key, `0600`, never in the configs         |
 | `.huri-local/env.sh`                             | venv + `huri.env` + `secrets.env` in one `source` |
@@ -395,7 +406,7 @@ yourself (when nothing else uses that cluster) before `start.sh`.
 | `qdrant is not answering … HuRI does not manage this instance` | Something else already owned the port when you installed, so HuRI never created its own. Start it yourself, or free the port and re-run `--only services`.           |
 | No audio from the client                                       | Check TTS is actually enabled (`grep HURI_MODULES config/huri_local.generated.yaml`) — with `--modules` or a dropped plan there may be no TTS at all.                |
 | No module loads: `entry point 'tts' is registered twice` | An environment from before huri-module-tts still has the three packages it replaced. `./install.sh --only python` removes them; otherwise `pip uninstall huri-tts huri-module-tts-piper huri-module-tts-cosyvoice`, then install huri-module-tts. |
-| `cannot reach huri-core at ref X` (or huri-cli)                | git could not read the repository (offline, or it answered 401: missing or private; git is never allowed to prompt). Check the ref in `versions.env`, or point `HURI_CORE_PATH` / `HURI_CLI_PATH` at a local checkout. |
+| `cannot reach huri-core at ref X`                              | git could not read the repository (offline, or it answered 401: missing or private; git is never allowed to prompt). Check the ref in `versions.env`, or point `HURI_CORE_PATH` at a local checkout. |
 | Install fails with no explanation                              | Every command's output is in `.huri-local/install.log`, and the error line names the real command.                                                                   |
 
 ## Usage without the installer
@@ -425,8 +436,7 @@ Client — the reference CLI, [HuRI-CLI](https://github.com/Lucy-Robotics/HuRI-C
 has its own repository:
 
 ```sh
-pip install -c constraints.txt \
-  "huri-cli @ git+https://github.com/Lucy-Robotics/HuRI-CLI.git@$(. ./versions.env && echo "$HURI_CLI_REF")"
+pip install -c constraints.txt huri-cli   # its newest release that fits the installed core
 huri-cli --config config/client_local.generated.yaml
 ```
 
@@ -473,9 +483,9 @@ the modules picked are installed, so the server sees nothing else
 
 ```sh
 # a server with three modules (each module brings huri-core[server] and huri-events)
-pip install "huri-modules[vad,stt,tts]==0.1.1"
+pip install "huri-modules[vad,stt,tts]==0.3.0"
 # a client: the SDK, the curated topics and the reference CLI (no Ray)
-pip install "huri-core[client]>=0.4,<0.5" "huri-events>=0.1,<0.2" huri-cli
+pip install "huri-core[client]>=0.5,<0.6" "huri-events>=0.3,<0.4" huri-cli
 ```
 
 pip installs the default PyTorch build: for a GPU (CUDA, ROCm), for CosyVoice,
@@ -492,7 +502,7 @@ ref=0.1.0   # a huri-modules release tag
 core=0.4.0  # HURI_CORE_REF in that release's versions.env
 CORE="git+https://github.com/Lucy-Robotics/huri-core.git@$core"
 MODS="git+https://github.com/Lucy-Robotics/huri-modules.git@$ref"
-cli=0.1.0   # a huri-cli release tag (HURI_CLI_REF in that release's versions.env)
+cli=0.1.0   # a huri-cli release tag whose ranges accept that core
 # a client: the SDK, the curated topics and the reference CLI (no Ray)
 pip install "huri-core[client] @ $CORE" \
   "huri-events @ $MODS#subdirectory=packages/huri-events" \
@@ -504,8 +514,8 @@ pip install "huri-core[server] @ $CORE" \
 
 From git, give huri-core, huri-events and huri-cli as git URLs on the same
 command line as what depends on them, so pip takes them from git and not from
-an index. Use release tags, a huri-core `0.4.x` with a
-huri-modules `0.2.x` (see [Versions](#versions-and-compatibility)); without a
+an index. Use release tags, a huri-core `0.5.x` with a
+huri-modules `0.3.x` (see [Versions](#versions-and-compatibility)); without a
 ref pip takes the repository's default branch. `[server]` is Ray Serve + FastAPI and the pins that
 keep them working; each module package declares its own dependencies, and the
 GPU ones ship `requirements-<variant>[.<module>].txt` pins next to it.
@@ -515,6 +525,8 @@ GPU ones ship `requirements-<variant>[.<module>].txt` pins next to it.
 ```sh
 make lint                              # black, isort, flake8, mypy (as CI; `make format` fixes the first two)
 make test                              # pytest: tests/ and packages/*/tests
+make bench                             # benchmarks: a spoken turn (models faked), the events' wire cost
+make bench-compare                     # the same against origin/dev (BASE=...), fails on a mean >25% slower; RELEASE=<tag> adds a report-only table
 make check                             # both
 python check_registry.py --run-tests   # the registry against its packages
 python scripts/check_links.py          # the pages' relative links and anchors
@@ -565,8 +577,8 @@ See [`packages/huri-module-stt/tests/test_stt.py`](packages/huri-module-stt/test
   extras (`huri-modules[vad,stt]`), versioned as the release
 - **registry.toml**, **check_registry.py**, **ACCEPTANCE.md** — the verified
   index, its CI check (with huri-hub's reader) and the listing criteria
-- **versions.env** — the huri-core and huri-cli refs this repository is built
-  and tested against; **RELEASING.md** — versions and releases
+- **versions.env** — the huri-core ref this repository is built and tested
+  against; **RELEASING.md** — versions and releases
 - **install.sh**, **scripts/** — the local installer (`install_local.sh`), the
   per-hardware requirement merger (`module_requirements.py`), the installer
   portability test (`test_install.sh`) and the pages' link check
@@ -575,8 +587,9 @@ See [`packages/huri-module-stt/tests/test_stt.py`](packages/huri-module-stt/test
   (`client_template.yaml`); the installer writes `client_local.generated.yaml`
 - **deploy/** — the Docker images, `install_huri.sh`, a session smoke test and
   Helm values examples (`deploy/examples`); **helm/** — the KubeRay chart
-- **tests/** — the curated set's tests; **tests/integration** — the whole
-  curated pipeline in one session
+- **tests/** — the repo's own tests (each package's are in its `tests/`):
+  **contract/**, rules every package follows; **tooling/**, the repo's scripts
+  and shipped files; **integration/**, the whole curated pipeline in one session
 
 ## Modules as plugins
 
@@ -630,9 +643,9 @@ name = "servo"                     # its huri.modules entry point name
 summary = "Gesture to servo angle arrays"
 input = { topic = "huri.motion", event = "huri_events.motion:Motion" }
 output = { topic = "acme.servo_angles", event = "huri_events_servo:ServoAngles" }  # omit for a terminal module
-events = ["huri-events>=0.2,<0.3", "huri-events-servo>=0.1,<0.2"]                  # optional
+events = ["huri-events>=0.3,<0.4", "huri-events-servo>=0.1,<0.2"]                  # optional
 requires = { gpu = false, actuation = false }                                      # optional
-huri_core = ">=0.4,<0.5"
+huri_core = ">=0.5,<0.6"
 ```
 
 At startup the server checks every enabled module that has one: its topics and

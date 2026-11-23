@@ -15,6 +15,18 @@ send: [huri.question]
 # Topics this client receives. Each must be emitted by a module of the session.
 subscribe: [huri.token]
 
+# Optional (huri-core >= 0.5, ignored by older versions): minimum level of the
+# INFO/DEBUG traffic lines of this session, per module id (the tags under
+# `modules:`) and per topic; unlisted ones keep logging everything. Module
+# levels apply on the server only; the client SDK's DEBUG sent/received lines
+# go by topic only. Warnings and errors are never filtered. Levels: DEBUG,
+# INFO, WARNING, ERROR, CRITICAL, in any case.
+# log:
+#   modules:
+#     example: WARNING
+#   topics:
+#     huri.audio.in: WARNING
+
 # Define module to be used and their custom args
 modules:
   # module tag can be anything

@@ -5,12 +5,14 @@ Centralises the URL→client parsing used by both the RAGHandle deployment
 handling lives in exactly one place instead of being copy-pasted.
 """
 
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
-from qdrant_client import QdrantClient
+if TYPE_CHECKING:
+    from qdrant_client import QdrantClient
 
 
-def make_qdrant_client(qdrant_url: str, verify_ssl: bool = True) -> QdrantClient:
+def make_qdrant_client(qdrant_url: str, verify_ssl: bool = True) -> "QdrantClient":
     """Build a :class:`QdrantClient` from a URL.
 
     Parses the URL explicitly so the client gets the correct host/port/https.
@@ -18,6 +20,8 @@ def make_qdrant_client(qdrant_url: str, verify_ssl: bool = True) -> QdrantClient
     silently fall back to their default port (6333) instead of 443, causing a
     timeout that looks like an SSL issue — so derive the port from the scheme.
     """
+    from qdrant_client import QdrantClient
+
     parsed = urlparse(qdrant_url)
     is_https = parsed.scheme == "https"
     return QdrantClient(

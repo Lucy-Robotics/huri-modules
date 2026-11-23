@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import queue
 import sys
@@ -8,6 +9,8 @@ from typing import AsyncGenerator, Optional
 import numpy as np
 from huri_events.audio import Audio
 from ray import serve
+
+logger = logging.getLogger("ray.serve")
 
 # Defaults — overridden by env vars in production (see README.md)
 _MODEL_PATH = os.environ.get(
@@ -103,7 +106,9 @@ class CosyVoiceTTSHandle:
         else:
             fp16 = torch.cuda.is_available()
         if fp16 and not torch.cuda.is_available():
-            print("[TTS] fp16 requested but no CUDA device; falling back to fp32")
+            logger.warning(
+                "[TTS] fp16 requested but no CUDA device; falling back to fp32"
+            )
             fp16 = False
 
         # TensorRT accelerates the flow-matching estimator (often the single
@@ -117,9 +122,11 @@ class CosyVoiceTTSHandle:
             "on",
         )
 
-        print(
-            f"[TTS] loading CosyVoice3 (fp16={fp16}, load_trt={load_trt}) "
-            f"from {model_path!r}"
+        logger.info(
+            "[TTS] loading CosyVoice3 (fp16=%s, load_trt=%s) from %r",
+            fp16,
+            load_trt,
+            model_path,
         )
         self.model = CosyVoice3(model_dir=model_path, load_trt=load_trt, fp16=fp16)
         self.sample_rate: int = self.model.sample_rate
@@ -151,9 +158,10 @@ class CosyVoiceTTSHandle:
         import time
 
         if not os.path.isfile(self.prompt_speech):
-            print(
-                f"[TTS] warmup skipped: reference sample {self.prompt_speech!r} "
-                "not present yet (upload voice.wav, then restart to warm)"
+            logger.warning(
+                "[TTS] warmup skipped: reference sample %r not present yet "
+                "(upload voice.wav, then restart to warm)",
+                self.prompt_speech,
             )
             return
         try:
@@ -169,9 +177,11 @@ class CosyVoiceTTSHandle:
                 stream=True,
             )
             chunks = sum(1 for _ in audio_iter)
-            print(f"[TTS] warmup done ({chunks} chunks) in {time.time() - t0:.2f}s")
+            logger.info(
+                "[TTS] warmup done (%s chunks) in %.2fs", chunks, time.time() - t0
+            )
         except Exception as e:  # noqa: BLE001 — warmup is an optimisation, never fatal
-            print(f"[TTS] WARNING warmup failed: {e!r}")
+            logger.warning("[TTS] warmup failed: %r", e)
 
     async def get_sample_rate(self) -> int:
         return self.sample_rate
@@ -189,7 +199,9 @@ class CosyVoiceTTSHandle:
             q.put(_END_TEXT)
 
     async def stream_audio(self, session_id: str) -> AsyncGenerator[Audio, None]:
-        text_q = self._text_queues[session_id]
+        text_q = self._text_queues.get(session_id)
+        if text_q is None:  # ended before this stream started
+            return
         loop = asyncio.get_running_loop()
         chunk_count = 0
 
@@ -220,3 +232,10 @@ class CosyVoiceTTSHandle:
             raise
         finally:
             self._text_queues.pop(session_id, None)
+            # On cancel the executor thread is blocked in text_q.get(); wake it.
+            text_q.put(_END_TEXT)
+
+    async def end_session(self, session_id: str) -> None:
+        q = self._text_queues.pop(session_id, None)
+        if q is not None:
+            q.put(_END_TEXT)

@@ -86,10 +86,12 @@ def test_huri_events_registers_every_curated_topic():
         "huri.voice",
         "huri.transcript",
         "huri.emotion",
+        "huri.emotion.out",
         "huri.partial_question",
         "huri.question",
         "huri.token",
         "huri.motion",
+        "huri.lips.face",
     }
     dists = {getattr(eps[name].dist, "name", None) for name in curated}
     assert dists == {"huri-events"}

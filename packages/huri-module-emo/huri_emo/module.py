@@ -86,9 +86,8 @@ class EMO(ModuleWithHandle):
         sample_rate: int = 16000,
         block_duration: float = 0.020,  # s
         analysis_window: float = 4.0,  # s
-        **kwargs,
     ):
-        super().__init__(_handle=_handle, **kwargs)
+        super().__init__(_handle=_handle)
 
         self.sample_rate = sample_rate
         self.window_size = int(analysis_window / block_duration)
@@ -144,8 +143,13 @@ class EMO(ModuleWithHandle):
                 if chunks
                 else np.zeros(self.sample_rate // 10, dtype=np.float32)
             )
-            result = await self._handle.predict.remote(audio)
-
+            response = self._handle.predict.remote(audio)
+            try:
+                result = await response
+            except asyncio.CancelledError:
+                # Ray Serve does not pass a caller's cancel on to the replica
+                response.cancel()
+                raise
             async with self.lock:
                 # Frames received during the await are kept for the next pass.
                 self.buffer = self.buffer[len(chunks) :]

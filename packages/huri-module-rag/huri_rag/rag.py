@@ -11,12 +11,6 @@ import httpx
 from huri_events.question import RAGQuestion
 from huri_events.text import Token
 from pydantic import BaseModel
-from qdrant_client.models import (
-    FieldCondition,
-    Filter,
-    MatchValue,
-    PointStruct,
-)
 from ray import serve
 from ray.serve import handle
 
@@ -72,6 +66,9 @@ def _ago(iso: str | None, now: datetime | None = None) -> str:
 
 # The memories a session can use (see WorkingMemory), all on by default.
 MEMORIES = ("short", "working", "long")
+
+# Keep replica outages from growing every prompt and retry without limit.
+_MAX_PENDING_TURNS = 32
 
 
 class RAGDeploymentConfig(BaseModel):
@@ -252,6 +249,9 @@ class RAGHandle:
         """
         Always-on facts about the user (name, etc.).
         """
+
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+
         try:
             points, _ = self._qdrant.scroll(
                 collection_name=collection,
@@ -323,6 +323,9 @@ class RAGHandle:
     def _search_memories(self, query_vector: list[float], _user_id: str) -> list[str]:
         """Retrieve, re-rank (relevance+recency+importance), reinforce, return
         texts dated and oldest first, for the LLM to prefer the latest."""
+
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+
         try:
             hits = self._qdrant.query_points(
                 collection_name=self._cfg.memory_collection,
@@ -527,6 +530,8 @@ class RAGHandle:
         so a confused LLM changes nothing rather than corrupting memories.
         """
 
+        from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
+
         cfg = self._cfg
         try:
             hits = self._qdrant.query_points(
@@ -625,6 +630,8 @@ class RAGHandle:
         return None
 
     def _mark_maintenance_done(self, vector_size: int) -> None:
+        from qdrant_client.models import PointStruct
+
         self._qdrant.upsert(
             collection_name=self._cfg.memory_collection,
             points=[
@@ -685,6 +692,8 @@ class RAGHandle:
         collection: str,
         filters: dict | None = None,
     ) -> list[dict]:
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+
         qdrant_filter: Any = None
         if filters:
             must: Any = []
@@ -1002,9 +1011,8 @@ class RAG(ModuleWithHandle, ModuleWithId):
         temperature=0.7,
         max_history_turns=6,
         memory: str | Sequence[str] = MEMORIES,
-        **kwargs,
     ):
-        super().__init__(_handle=_handle, _user_id=_user_id, **kwargs)
+        super().__init__(_handle=_handle, _user_id=_user_id)
 
         print(
             f"[RAG] Initialized with user_id={_user_id}, language={language}, "
@@ -1044,6 +1052,8 @@ class RAG(ModuleWithHandle, ModuleWithId):
         # yet: still sent verbatim, so no question misses them meanwhile.
         self._folding: list[dict] = []
         self._working_lock = asyncio.Lock()
+        # The module's own tasks: an interrupt of an answer can't cancel them.
+        self._folds: set[asyncio.Task] = set()
         # One answer at a time: the bus runs each question in its own task, so
         # a question asked during an answer waits for it, then knows it.
         self._answer_lock = asyncio.Lock()
@@ -1077,17 +1087,32 @@ class RAG(ModuleWithHandle, ModuleWithId):
 
             parts: list[str] = []
             stream = self._handle.options(stream=True).stream.remote(query)
-            async for delta in stream:  # type: ignore[union-attr]
-                parts.append(delta)
-                yield Token(text=delta, end=False)
+            try:
+                async for delta in stream:
+                    parts.append(delta)
+                    yield Token(text=delta, end=False)
+            except (asyncio.CancelledError, GeneratorExit):
+                # Ray Serve does not pass a caller's cancel on to the replica
+                stream.cancel()
+                raise
             yield Token(text="", end=True)
 
             evicted = self._record_turn(question_text, "".join(parts))
             if self._working:
                 self._folding.extend(evicted)
+                overflow = len(self._folding) - _MAX_PENDING_TURNS * 2
+                if overflow > 0:
+                    del self._folding[:overflow]
+                    print(
+                        f"[RAG] pending memory limit reached: discarded "
+                        f"{overflow // 2} oldest unfolded turn(s)"
+                    )
         # Outside the answer lock: the next question need not wait for it.
-        if evicted and self._working:
-            await self._fold_into_working_memory(evicted)
+        if self._folding:  # also picks up what an earlier fold left
+            fold = asyncio.create_task(self._fold_into_working_memory())
+            self._folds.add(fold)
+            fold.add_done_callback(self._folds.discard)
+            await asyncio.shield(fold)
 
     def _record_turn(self, question: str, answer: str) -> list[dict]:
         answer = answer.strip()
@@ -1100,21 +1125,27 @@ class RAG(ModuleWithHandle, ModuleWithId):
         del self.history[: len(evicted)]
         return evicted
 
-    async def _fold_into_working_memory(self, turns: list[dict]) -> None:
+    async def _fold_into_working_memory(self) -> None:
         async with self._working_lock:
+            turns = list(self._folding)
+            if not turns:
+                return  # an earlier fold took them
             try:
                 self.working = await self._handle.fold_into_working_memory.remote(
                     self.working, turns
                 )
             except Exception:
                 print(f"[RAG] working memory update failed:\n{traceback.format_exc()}")
+                return  # the turns stay pending: the next answer retries
             self._folding = [m for m in self._folding if all(m is not t for t in turns)]
 
     async def finalize(self) -> None:
+        for fold in list(self._folds):
+            fold.cancel()  # session over: its turns stay in _folding, saved below
         if not self._long:
             return
         async with self._working_lock:
-            # A fold cancelled with the session left its turns in _folding.
+            # Turns no fold finished are still in _folding.
             history = self._folding + self.history
             if not history and not self.working:
                 return

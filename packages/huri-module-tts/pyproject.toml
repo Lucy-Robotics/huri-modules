@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "huri-module-tts"
-version = "0.2.0"
+version = "0.3.0"
 description = "HuRI modules: text to speech with Piper (CPU, any machine) or CosyVoice3 (voice cloning, NVIDIA GPU)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,8 +12,8 @@ requires-python = ">=3.10"
 # with its extra, so a host that runs one engine never installs the other's
 # stack (piper's onnxruntime and CosyVoice's onnxruntime-gpu do not mix).
 dependencies = [
-  "huri-core[server]>=0.4,<0.5",
-  "huri-events>=0.1,<0.3",
+  "huri-core[server]>=0.5,<0.6",
+  "huri-events>=0.1,<0.4",
   "numpy>=1.26,<2",
 ]
 

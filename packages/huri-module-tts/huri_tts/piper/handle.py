@@ -16,12 +16,13 @@ other engine, for when an NVIDIA GPU is present and the cloned voice matters
 more than latency: a separate module, `tts_cosyvoice`, wired in its place.
 
 The public surface is the one huri_tts.streaming.StreamingTTS drives —
-``get_sample_rate`` / ``start_session`` / ``push_text`` / ``stream_audio``. The
-deployment keeps the name ``TTSHandle``, so existing ``deployments:`` blocks
-still apply to the default engine.
+``get_sample_rate`` / ``start_session`` / ``push_text`` / ``stream_audio`` /
+``end_session``. The deployment keeps the name ``TTSHandle``, so existing
+``deployments:`` blocks still apply to the default engine.
 """
 
 import asyncio
+import logging
 import os
 import re
 import traceback
@@ -30,6 +31,8 @@ from typing import AsyncGenerator, Dict, List
 import numpy as np
 from huri_events.audio import Audio
 from ray import serve
+
+logger = logging.getLogger("ray.serve")
 
 _VOICE_PATH = os.environ.get(
     "HURI_PIPER_VOICE", "assets/models/piper/en_US-lessac-medium.onnx"
@@ -75,9 +78,10 @@ class PiperTTSHandle:
         self._sample_rate = int(self._voice.config.sample_rate)
         self._buffers: Dict[str, List[str]] = {}
         self._queues: Dict[str, asyncio.Queue] = {}
-        print(
-            f"[PiperTTS] loaded {os.path.basename(voice_path)} "
-            f"@ {self._sample_rate}Hz (onnxruntime, CPU)"
+        logger.info(
+            "[PiperTTS] loaded %s @ %sHz (onnxruntime, CPU)",
+            os.path.basename(voice_path),
+            self._sample_rate,
         )
 
     @staticmethod
@@ -123,6 +127,13 @@ class PiperTTSHandle:
         self._buffers[session_id] = []
         self._queues[session_id] = asyncio.Queue()
 
+    async def end_session(self, session_id: str) -> None:
+        """Interrupted utterance: buffered text is dropped, not synthesized."""
+        self._buffers.pop(session_id, None)
+        queue = self._queues.pop(session_id, None)
+        if queue is not None:
+            queue.put_nowait(None)  # a running stream_audio finishes on the sentinel
+
     async def push_text(self, session_id: str, text: str, end: bool) -> None:
         """Accumulate LLM tokens, flushing complete phrases for synthesis.
 
@@ -131,8 +142,9 @@ class PiperTTSHandle:
         time-to-first-audio low while still giving Piper enough context for
         sensible prosody.
         """
-        buf = self._buffers.setdefault(session_id, [])
-        queue = self._queues.setdefault(session_id, asyncio.Queue())
+        buf, queue = self._buffers.get(session_id), self._queues.get(session_id)
+        if buf is None or queue is None:
+            return  # session ended (or never started): a late push must not revive it
         if text:
             buf.append(text)
 
@@ -160,7 +172,9 @@ class PiperTTSHandle:
             await queue.put(None)  # end-of-utterance sentinel
 
     async def stream_audio(self, session_id: str) -> AsyncGenerator[Audio, None]:
-        queue = self._queues.setdefault(session_id, asyncio.Queue())
+        queue = self._queues.get(session_id)
+        if queue is None:
+            return  # session already ended: nothing to stream
         loop = asyncio.get_running_loop()
         pts = 0.0
         try:

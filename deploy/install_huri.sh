@@ -8,7 +8,7 @@
 # SRC_DIR holds packages/ and the versions.env file of this repository; an
 # empty or absent HURI_CORE_REF argument (the Dockerfiles' build arg) means
 # the HURI_CORE_REF of that file, the ref this repository is tested against.
-# (The images do not install huri-cli, so HURI_CLI_REF is not read here.)
+# (The images do not install huri-cli.)
 #
 # --no-deps: each image installs the heavy, hardware-specific dependencies
 # first, from its own requirement files (which also satisfy huri-core's

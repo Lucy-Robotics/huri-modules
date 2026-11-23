@@ -14,10 +14,12 @@ import asyncio
 import uuid
 from collections import defaultdict
 from datetime import datetime
-from typing import Awaitable, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 import httpx
-from qdrant_client.models import PointIdsList, PointStruct
+
+if TYPE_CHECKING:
+    from qdrant_client.models import PointStruct
 
 try:
     from .qdrant_utils import make_qdrant_client
@@ -57,7 +59,9 @@ def strength(
 
 def memory_point(
     vector: list[float], text: str, user_id: str, kind: str, importance: int
-) -> PointStruct:
+) -> "PointStruct":
+    from qdrant_client.models import PointStruct
+
     now = datetime.now().isoformat()
     return PointStruct(
         id=str(uuid.uuid4()),
@@ -144,6 +148,8 @@ async def consolidate_and_prune(
         print(f"[{user}] consolidated {len(weak)} → 1 (importance={imp})")
 
     if to_delete:
+        from qdrant_client.models import PointIdsList
+
         qdrant.delete(
             collection_name=collection,
             points_selector=PointIdsList(points=[p.id for p in to_delete]),

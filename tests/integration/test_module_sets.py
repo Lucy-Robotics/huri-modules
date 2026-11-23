@@ -5,7 +5,7 @@ answer (module_set_problems) and writes the client config matching the one it
 accepts (client_config). Each of the 511 non-empty sets of the curated modules
 goes through the first; each accepted one, with the client config written for
 it, goes through the server's websocket endpoint in-process: real module
-classes, real bus, fake models (the fakes of test_full_pipeline.py).
+classes, real bus, fake models (fakes.py).
 """
 
 import asyncio
@@ -24,8 +24,7 @@ import yaml
 from huri_core.core.huri import HuRI
 from huri_core.core.plugins import load_events, load_modules
 from huri_core.testing import LocalHandle
-
-from .test_full_pipeline import (
+from tests.integration.fakes import (
     FakeEmotionModel,
     FakeGestures,
     FakeLLM,
@@ -240,3 +239,13 @@ def test_the_generated_client_config_answers_a_spoken_question(modules, monkeypa
 @pytest.mark.parametrize("modules", [m for m in ACCEPTED_SETS if "vad" not in m])
 def test_without_vad_the_microphone_is_not_sent(modules):
     assert client_config(modules)["send"] == ["huri.question"]
+
+
+@pytest.mark.parametrize("modules", [m for m in ACCEPTED_SETS if "vad" in m])
+def test_the_generated_client_config_quiets_microphone_audio(modules):
+    assert client_config(modules)["log"] == {"topics": {"huri.audio.in": "WARNING"}}
+
+
+@pytest.mark.parametrize("modules", [m for m in ACCEPTED_SETS if "vad" not in m])
+def test_without_vad_there_is_no_log_section(modules):
+    assert "log" not in client_config(modules)

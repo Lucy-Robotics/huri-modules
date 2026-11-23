@@ -117,7 +117,7 @@ def read_pyproject(path: Path) -> Package:
             {
                 key: _toml_strings(value)
                 for key, value in re.findall(
-                    r"(?ms)^([A-Za-z0-9_-]+)\s*=\s*\[(.*?)\]", optional
+                    r"(?ms)^([A-Za-z0-9_-]+)\s*=\s*\[(.*?)\][ \t]*$", optional
                 )
             },
             dict(re.findall(r'(?m)^([A-Za-z0-9_]+)\s*=\s*"([^"]*)"', extras)),

@@ -125,9 +125,8 @@ class STT(ModuleWithHandle):
         block_duration: float = 0.020,  # s
         transcribe_window: float = 2.0,  # s
         transcribe_step: float = 1.0,  # s
-        **kwargs,
     ):
-        super().__init__(_handle=_handle, **kwargs)
+        super().__init__(_handle=_handle)
 
         self.language = language
 
@@ -167,6 +166,16 @@ class STT(ModuleWithHandle):
         finally:
             self.running = False
 
+    def _drop_turn(self, frames: int, buffered: int) -> None:
+        """Reset per-turn state so the NEXT utterance is independent.
+
+        Frames that arrived during the transcription belong to the next turn.
+        """
+
+        self.utterance = self.utterance[frames:]
+        self.buffer = self.buffer[buffered:]
+        self._covered = 0
+
     async def _transcribe_pending(self) -> AsyncGenerator[Transcript, None]:
         """Run transcriptions until there is nothing left to do.
 
@@ -192,16 +201,21 @@ class STT(ModuleWithHandle):
                 return
 
             audio = np.concatenate(chunks, axis=0)
-            text = await self._handle.transcribe.remote(audio, self.language)
+            response = self._handle.transcribe.remote(audio, self.language)
+            try:
+                text = await response
+            except asyncio.CancelledError:
+                # Ray Serve does not pass a caller's cancel on to the replica
+                response.cancel()
+                if end:
+                    # No lock: awaiting it would add a suspension point, and
+                    # lock-guarded sections never await, so this is atomic.
+                    self._drop_turn(len(chunks), buffered)
+                raise
 
             async with self.lock:
                 if end:
-                    # Whole turn was transcribed: reset per-turn state so the
-                    # NEXT utterance is independent. Frames that arrived during
-                    # the await belong to the next turn.
-                    self.utterance = self.utterance[len(chunks) :]
-                    self.buffer = self.buffer[buffered:]
-                    self._covered = 0
+                    self._drop_turn(len(chunks), buffered)
                 else:
                     # Mid-utterance: slide the window forward, keeping the
                     # overlap.
