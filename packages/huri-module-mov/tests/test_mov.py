@@ -2,6 +2,7 @@
 
 import asyncio
 
+import pytest
 import numpy as np
 from huri_events.audio import Audio
 from huri_events.motion import Motion
@@ -56,3 +57,45 @@ def test_end_of_utterance_flushes_the_tail_and_resets():
     assert [m.poses.shape[0] for m in out] == [18, 6]  # only the new 0.2 s
     assert emage.windows[1] == int(0.8 * SR)  # inferred with context
     assert sample_rate is None  # ready for the next utterance
+
+
+def test_interrupted_mov_request_cancels_ray_response():
+    class RayResponse:
+        cancel_called = False
+
+        def __await__(self):
+            return asyncio.get_running_loop().create_future().__await__()
+
+        def cancel(self):
+            self.cancel_called = True
+
+    class RayHandle:
+        def __init__(self):
+            self.started = asyncio.Event()
+            self.response = RayResponse()
+            self.infer = self
+
+        def remote(self, window, sr):
+            self.started.set()
+            return self.response
+
+    async def run():
+        handle = RayHandle()
+        harness = ModuleHarness(
+            MOV,
+            handle=handle,
+            min_chunk_sec=0.5,
+            context_sec=1.0,
+        )
+
+        task = asyncio.create_task(harness.feed(chunk(0.6)))
+        await handle.started.wait()
+
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert handle.response.cancel_called
+
+    asyncio.run(run())

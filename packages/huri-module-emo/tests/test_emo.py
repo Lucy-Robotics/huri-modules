@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 
 import numpy as np
 from huri_events.speech import Voice
@@ -88,3 +89,45 @@ async def _test_end_marker_during_inflight_analysis_is_not_dropped_impl():
 
     results = await inflight
     assert [e.end for e in results] == [False, True]
+
+
+def test_interrupted_emo_request_cancels_ray_response():
+    class RayResponse:
+        cancel_called = False
+
+        def __await__(self):
+            return asyncio.get_running_loop().create_future().__await__()
+
+        def cancel(self):
+            self.cancel_called = True
+
+    class RayHandle:
+        def __init__(self):
+            self.started = asyncio.Event()
+            self.response = RayResponse()
+            self.predict = self
+
+        def remote(self, audio):
+            self.started.set()
+            return self.response
+
+    async def run():
+        from huri_emo.module import EMO
+
+        handle = RayHandle()
+        emo = ModuleHarness(EMO, handle=handle, analysis_window=0.2)
+        # Fill the buffer until the next frame triggers analysis.
+        for _ in range(9):
+            await emo.feed(_voice())
+
+        task = asyncio.create_task(emo.feed(_voice()))
+        await handle.started.wait()
+
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert handle.response.cancel_called
+
+    asyncio.run(run())

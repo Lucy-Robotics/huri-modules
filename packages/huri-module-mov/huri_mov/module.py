@@ -391,7 +391,12 @@ class MOV(ModuleWithHandle):
         if window.size == 0:
             return None
 
-        motion: Motion = await self._handle.infer.remote(window, sr)
+        response = self._handle.infer.remote(window, sr)
+        try:
+            motion: Motion = await response
+        except asyncio.CancelledError:
+            response.cancel()
+            raise
         total_frames = motion.poses.shape[0]
 
         # EMAGE's internal windowing (EmageAudioModel.inference) emits a
