@@ -111,6 +111,10 @@ works on it. Nothing here is aspirational — these are measured outcomes:
 | **RAG / LLM** (Ollama)                                     | ✅ tier picked from free RAM     | ✅           | ✅                                        |
 | **EMO** (prosody)                                          | ✅ always CPU                    | ✅           | ✅                                        |
 | **MOV / gesture** (EMAGE)                                  | ❌ slower than realtime          | ✅           | ❌ not in the ROCm build                  |
+| **THINK** (generated motion, Piper voice) ¹                | ✅ no GPU needed                 | ✅           | ✅                                        |
+| **LIPS** (LAM Audio2Expression) ¹                          | ✅ ONNX int8, ~10x realtime      | ⚠️ not tested yet | ✅ torch, ~23x realtime              |
+
+¹ Not planned by the installer yet: see [The curated modules](#the-curated-modules).
 
 So **a machine with no GPU at all still gets voice in and voice out** — that is
 the point of Piper being the default. A GPU buys faster STT, and on NVIDIA it
@@ -153,6 +157,8 @@ rejected with a `session_error` naming both sets.
 | [`huri-module-emo`](packages/huri-module-emo) | `emo`, `eag`, `emo_react`, `emo_out` | estimates the emotion of speech from its prosody, and aggregates it over an utterance; decides the emotion HuRI expresses (`huri.emotion.out`): a reaction to the user's emotion, then the emotion of each sentence of the reply |
 | [`huri-module-rag`](packages/huri-module-rag) | `rag`, `qag` | answers from memory with an LLM, streaming tokens, told how the user sounded; joins a transcript and its emotion into a question, without waiting for the emotion (`mode: parallel`, the default) or after it (`sequential`); ingestion and memory tools |
 | [`huri-module-mov`](packages/huri-module-mov) | `mov` | SMPL-X co-speech gestures (EMAGE, vendored model code) |
+| [`huri-module-think`](packages/huri-module-think) | `think`, `think_say`, `think_token`, `think_stop` | fills the wait between a question and its answer: `think` streams generated SMPL-X thinking poses (`huri.motion`), `think_say` thinks aloud ("hmm...", "let me think about that") in the TTS's Piper voice (extra `piper`); `think_token` and `think_stop` silence them when the answer is written, then heard. No GPU |
+| [`huri-module-lips-sync`](packages/huri-module-lips-sync) | `lips`, `tts_phonemes` | lip sync: `lips` streams 52 ARKit blend shape weights at 30 fps in step with the voice (`huri.lips.face`), from LAM Audio2Expression on a GPU or a CPU (extra `lam`); `tts_phonemes` is Piper text to speech whose audio carries its phoneme timings, for exact lip sync, wired instead of `tts` (extra `piper`) |
 | [`huri-module-tts`](packages/huri-module-tts) | `tts`, `tts_cosyvoice` | speaks the reply: `tts` is the default engine, Piper (ONNX, any CPU; extra `piper`); `tts_cosyvoice` clones a voice with CosyVoice3 (NVIDIA; extra `cosyvoice`), wired instead of `tts` |
 | [`huri-hub`](packages/huri-hub) | — | `huri hub`: finds and installs modules (a tool, not in the registry; it reads it) |
 
@@ -164,7 +170,10 @@ package whose modules need different stacks gives each module an extra
 `huri-module-tts[piper]` brings Piper's and `[cosyvoice]` CosyVoice's;
 `huri-module-emo[model]` is `emo`'s classifier (torch, transformers) and
 `huri-module-rag[rag]` is `rag`'s retrieval stack, which their aggregators
-`eag` and `qag` do not need. Without a checkout, the
+`eag` and `qag` do not need; `huri-module-think[piper]` is `think_say`'s voice,
+and `huri-module-lips-sync[lam]` is `lips`' model. The installer does not plan
+`think` and `lips` yet (`--modules` does not know them): install and enable them
+by hand, as each package's README shows. Without a checkout, the
 [`huri-modules` metapackage](meta/README.md) picks modules by name from PyPI
 (`pip install "huri-modules[emo,eag]"`, see
 [Installing as packages](#installing-as-packages-without-a-checkout)); from git,
