@@ -14,7 +14,7 @@ distributions are meta/ and every packages/*/.
   the upload.
 
 Prints the plan (and adds it to the job summary), writes `release`, `create`,
-`version`, `previous`, `core`, `cli`, `uploads` and `versions` to
+`version`, `previous`, `core`, `uploads` and `versions` to
 $GITHUB_OUTPUT, exits 1 on a problem.
 """
 
@@ -144,12 +144,11 @@ def problems(
                 f"{pkg.name} changed without a version bump: {pkg.version} is "
                 f"already on PyPI, bump its version in {pkg.path}/pyproject.toml"
             )
-    for key in ("HURI_CORE_REF", "HURI_CLI_REF"):
-        if not release_tags([refs.get(key, "")]):
-            found.append(
-                f"{key} is {refs.get(key)!r} in versions.env: a release is built "
-                "against a release tag (0.4.1), never dev or a branch"
-            )
+    if not release_tags([refs.get("HURI_CORE_REF", "")]):
+        found.append(
+            f"HURI_CORE_REF is {refs.get('HURI_CORE_REF')!r} in versions.env: a "
+            "release is built against a release tag (0.4.1), never dev or a branch"
+        )
     for dist in [*packages, meta]:
         for req in dist.requires:
             if Requirement(req).url:
@@ -205,7 +204,6 @@ def main(pypi: OnPyPI = on_pypi, project: ProjectOnPyPI = project_on_pypi) -> in
         return dict(
             version=version,
             core=refs.get("HURI_CORE_REF", ""),
-            cli=refs.get("HURI_CLI_REF", ""),
             uploads=" ".join([*uploads, f"{meta.name}=={version}"]),
             versions=" ".join(f"{d.name}=={d.version}" for d in [*packages, meta]),
         )

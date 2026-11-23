@@ -33,6 +33,7 @@ specific to huri-modules.
   (GPL-3.0, like huri-core, so a module you distribute is GPL-3.0 too).
   Listing it as verified in `registry.toml` (a submodule under `modules/<name>`)
   follows [ACCEPTANCE.md](ACCEPTANCE.md).
-- **The huri-core and huri-cli versions** this checkout is tested with are in
-  [`versions.env`](versions.env); [RELEASING.md](RELEASING.md) says when they
-  move.
+- **The huri-core version** this checkout is tested with is in
+  [`versions.env`](versions.env); [RELEASING.md](RELEASING.md) says when it
+  moves. huri-cli is not pinned: the installer takes its newest release that
+  supports that core.

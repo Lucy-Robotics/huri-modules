@@ -1,7 +1,7 @@
 # The expensive check: does ./install.sh (scripts/install_local.sh) actually
 # install a working HuRI on a clean machine? huri-core comes from its repository
-# at HURI_CORE_REF and huri-cli from its repository at HURI_CLI_REF (both in
-# versions.env), as for any user.
+# at HURI_CORE_REF (versions.env) and huri-cli, its newest PyPI release that
+# supports that core, as for any user.
 #
 # Nightly and on demand rather than per-push, because a full CPU install pulls
 # ~3.5 GB of wheels and takes 15-30 minutes per target. CI.yml covers the cheap

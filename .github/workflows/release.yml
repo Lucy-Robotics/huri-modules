@@ -42,7 +42,6 @@ jobs:
       version: ${{ steps.plan.outputs.version }}
       previous: ${{ steps.plan.outputs.previous }}
       core: ${{ steps.plan.outputs.core }}
-      cli: ${{ steps.plan.outputs.cli }}
       uploads: ${{ steps.plan.outputs.uploads }}
       versions: ${{ steps.plan.outputs.versions }}
     steps:
@@ -99,12 +98,11 @@ jobs:
           VERSION: ${{ needs.plan.outputs.version }}
           PREVIOUS: ${{ needs.plan.outputs.previous }}
           CORE: ${{ needs.plan.outputs.core }}
-          CLI: ${{ needs.plan.outputs.cli }}
         # --notes comes first, the generated notes follow it.
         run: |
           gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "huri-modules $VERSION" \
-            --notes "Built and tested against huri-core $CORE and HuRI-CLI $CLI." \
+            --notes "Built and tested against huri-core $CORE." \
             --generate-notes ${PREVIOUS:+--notes-start-tag "$PREVIOUS"}
 
   publish:

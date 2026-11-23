@@ -1,6 +1,7 @@
-"""The installer's (scripts/install_local.sh) dealings with git: versions.env is
-where the refs come from, git never prompts for credentials, --plan-only makes
-no network call, and an unreachable repository is a clear error.
+"""The installer's (scripts/install_local.sh) dealings with git and with the
+client: versions.env is where the core ref comes from, git never prompts for
+credentials, --plan-only makes no network call, an unreachable repository is a
+clear error, and huri-cli is the newest release that fits the installed core.
 
 git is a fake on PATH that records how it was called (and with which
 environment) and fails the way GitHub does for a missing or private repository.
@@ -92,13 +93,14 @@ def git_library(tmp_path, versions):
     return script
 
 
-def test_versions_env_names_both_refs():
+def test_versions_env_names_only_the_core_ref():
+    # huri-cli is not pinned: the installer takes its newest release that fits.
     text = (ROOT / "versions.env").read_text()
     keys = re.findall(r"(?m)^([A-Z_]+)=(\S+)$", text)
-    assert {k for k, _ in keys} == {"HURI_CORE_REF", "HURI_CLI_REF"}
+    assert {k for k, _ in keys} == {"HURI_CORE_REF"}
     # Shell-sourceable, as the docs and CI use it.
     out = subprocess.run(
-        ["sh", "-c", '. ./versions.env && echo "$HURI_CORE_REF $HURI_CLI_REF"'],
+        ["sh", "-c", '. ./versions.env && echo "$HURI_CORE_REF"'],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -112,9 +114,9 @@ def test_versions_get_reads_quoted_and_commented_values(tmp_path):
     lib = git_library(
         tmp_path,
         '# comment\nHURI_CORE_REF=dev\nHURI_CORE_REF="0.4.0"  # pinned\n'
-        "  HURI_CLI_REF='0.1.0'\n",
+        "  OTHER_REF='0.1.0'\n",
     )
-    for key, want in (("HURI_CORE_REF", "0.4.0"), ("HURI_CLI_REF", "0.1.0")):
+    for key, want in (("HURI_CORE_REF", "0.4.0"), ("OTHER_REF", "0.1.0")):
         got = subprocess.run(
             ["bash", str(lib), "versions_get", key],
             env=env_with(bin_dir),
@@ -173,16 +175,16 @@ def test_a_ref_from_the_environment_is_blamed_on_the_environment(tmp_path):
 
 def test_missing_ref_names_the_ref_to_fix(tmp_path):
     bin_dir, _ = fake_git(tmp_path, body="exit 0")  # reachable, no such ref
-    lib = git_library(tmp_path, "HURI_CLI_REF=nope\n")
+    lib = git_library(tmp_path, "HURI_CORE_REF=nope\n")
     out = subprocess.run(
         [
             "bash",
             str(lib),
             "resolve_ref",
-            "huri-cli",
-            "https://github.com/Lucy-Robotics/HuRI-CLI.git",
+            "huri-core",
+            "https://github.com/Lucy-Robotics/huri-core.git",
             "nope",
-            "HURI_CLI_PATH",
+            "HURI_CORE_PATH",
         ],
         env=env_with(bin_dir),
         capture_output=True,
@@ -190,8 +192,8 @@ def test_missing_ref_names_the_ref_to_fix(tmp_path):
         timeout=60,
     )
     assert out.returncode != 0
-    assert "huri-cli has no tag or branch nope" in out.stderr
-    assert "check HURI_CLI_REF in versions.env" in out.stderr
+    assert "huri-core has no tag or branch nope" in out.stderr
+    assert "check HURI_CORE_REF in versions.env" in out.stderr
 
 
 def test_a_tag_wins_and_is_peeled(tmp_path):
@@ -201,9 +203,9 @@ def test_a_tag_wins_and_is_peeled(tmp_path):
         'printf "%s\\trefs/tags/0.1.0^{}\\n" cccccccccccccccccccccccccccccccccccccccc\n'
     )
     bin_dir, _ = fake_git(tmp_path, body=body)
-    lib = git_library(tmp_path, "HURI_CLI_REF=0.1.0\n")
+    lib = git_library(tmp_path, "HURI_CORE_REF=0.1.0\n")
     out = subprocess.run(
-        ["bash", str(lib), "resolve_ref", "huri-cli", "u", "0.1.0", "HURI_CLI_PATH"],
+        ["bash", str(lib), "resolve_ref", "huri-core", "u", "0.1.0", "HURI_CORE_PATH"],
         env=env_with(bin_dir),
         capture_output=True,
         text=True,
@@ -268,33 +270,17 @@ def test_plan_only_makes_no_network_call(tmp_path, flags):
     )
     assert out.returncode == 0, out.stdout + out.stderr
     assert not log.exists(), log.read_text()
-    core, cli = shipped_ref("HURI_CORE_REF"), shipped_ref("HURI_CLI_REF")
+    core = shipped_ref("HURI_CORE_REF")
     assert f"git ref {core} of https://github.com/Lucy-Robotics/huri-core" in out.stdout
     if flags:
         assert re.search(r"client\s+none \(--no-cli\)", out.stdout)
     else:
         assert re.search(
-            rf"client\s+huri-cli \(git ref {re.escape(cli)} of "
-            r"https://github.com/Lucy-Robotics/HuRI-CLI\)",
+            r"client\s+huri-cli \(newest PyPI release that supports this huri-core\)",
             out.stdout,
         )
     plan = (repo / ".huri-local" / "plan.env").read_text()
-    assert ("HURI_CLI=none" if flags else f"HURI_CLI={cli}") in plan
-
-
-def test_a_missing_cli_ref_is_refused_up_front(tmp_path):
-    bin_dir, log = fake_git(tmp_path)
-    repo = installer_copy(tmp_path, versions="HURI_CORE_REF=dev\n")
-    out = subprocess.run(
-        [str(repo / "install.sh"), "--plan-only", "--python", sys.executable],
-        cwd=repo,
-        env=env_with(bin_dir),
-        capture_output=True,
-        text=True,
-    )
-    assert out.returncode == 2
-    assert "no HURI_CLI_REF" in out.stderr and "--no-cli" in out.stderr
-    assert not log.exists()
+    assert ("HURI_CLI=none" if flags else "HURI_CLI=pypi") in plan
 
 
 @pytest.mark.skipif(not supported_python(), reason="the planner wants 3.10-3.12")
@@ -311,14 +297,13 @@ def test_the_environment_overrides_versions_env(tmp_path):
             sys.executable,
         ],
         cwd=repo,
-        env=env_with(bin_dir, HURI_CORE_REF="0.4.0", HURI_CLI_REF="0.1.0"),
+        env=env_with(bin_dir, HURI_CORE_REF="0.4.0"),
         capture_output=True,
         text=True,
         timeout=300,
     )
     assert out.returncode == 0, out.stdout + out.stderr
     assert "git ref 0.4.0 of https://github.com/Lucy-Robotics/huri-core" in out.stdout
-    assert "git ref 0.1.0 of https://github.com/Lucy-Robotics/HuRI-CLI" in out.stdout
     assert not log.exists()
 
 
@@ -327,7 +312,7 @@ def test_help_documents_the_cli_switches():
         ["bash", str(INSTALLER), "--help"], capture_output=True, text=True
     )
     assert out.returncode == 0
-    for word in ("--no-cli", "HURI_CLI_REF", "HURI_CLI_PATH", "versions.env"):
+    for word in ("--no-cli", "HURI_CLI_PATH", "versions.env"):
         assert word in out.stdout
 
 
@@ -366,6 +351,63 @@ def test_a_local_checkout_path_is_checked_and_needs_no_git(tmp_path, name, valid
         assert out.returncode == 2
         assert f"{var}='{checkout}' is not a huri-{name} checkout" in out.stderr
     assert not log.exists()
+
+
+FAKE_PIP = """#!/bin/sh
+echo "$*" >>"{log}"
+case "$*" in *"install"*"huri-cli"*) exit {rc} ;; esac
+"""
+
+
+def install_cli(tmp_path, pip_rc):
+    """The installer's install_cli, with a fake pip that records its calls and
+    exits `pip_rc` when asked for huri-cli. VPY is this Python, so the pins are
+    the huri-core and huri-events installed here."""
+    log = tmp_path / "pip.log"
+    pip = tmp_path / "pip"
+    pip.write_text(FAKE_PIP.format(log=log, rc=pip_rc))
+    pip.chmod(0o755)
+    script = tmp_path / "cli.sh"
+    script.write_text(
+        "set -Eeuo pipefail\n"
+        f'PIP="{pip}"; VPY="{sys.executable}"; STATE_DIR="{tmp_path}"\n'
+        'LOG_FILE=install.log; INSTALL_CLI=1; HURI_CLI_PATH=""; DRY_RUN=0\n'
+        "CLI_UNAVAILABLE=0\n"
+        'run() { "$@"; }\n'
+        'info() { :; }; note() { :; }; warn() { echo "WARN $*"; }\n'
+        "cli_source() { :; }\n"
+        + section(INSTALLER.read_text(), "install_cli() {", "report_detection() {")
+        + 'install_cli -c constraints.txt\necho "CLI_UNAVAILABLE=$CLI_UNAVAILABLE"\n'
+    )
+    out = subprocess.run(["bash", str(script)], capture_output=True, text=True)
+    return out, log.read_text().splitlines()
+
+
+def installed_pins():
+    from importlib.metadata import version
+
+    return [f"{d}=={version(d)}" for d in ("huri-core", "huri-events")]
+
+
+def test_the_client_is_the_newest_release_that_fits_the_installed_core(tmp_path):
+    out, calls = install_cli(tmp_path, pip_rc=0)
+    assert out.returncode == 0, out.stderr
+    pins = tmp_path / "cli-constraints.txt"
+    # Core and events stay as installed: pip may not downgrade them to fit.
+    assert calls == [f"install -c constraints.txt -c {pins} --upgrade huri-cli"]
+    assert pins.read_text().split() == installed_pins()
+    assert "CLI_UNAVAILABLE=0" in out.stdout
+
+
+def test_no_release_for_this_core_installs_the_server_without_the_client(tmp_path):
+    out, calls = install_cli(tmp_path, pip_rc=1)
+    assert out.returncode == 0, out.stderr
+    # No older client left behind that rejects this core.
+    assert calls[-1] == "uninstall -y huri-cli"
+    assert "CLI_UNAVAILABLE=1" in out.stdout
+    warning = next(line for line in out.stdout.splitlines() if line.startswith("WARN"))
+    assert "no huri-cli release on PyPI supports" in warning
+    assert all(pin in warning for pin in installed_pins())
 
 
 STUB = """#!/bin/sh
