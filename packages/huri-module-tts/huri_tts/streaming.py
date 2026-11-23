@@ -101,6 +101,13 @@ class StreamingTTS(ModuleWithHandle):
             logger.info("[TTS-client] [%s] utterance complete (%s chunks)", sid, count)
 
             sample_rate = await self._handle.get_sample_rate.remote()
+            # New tokens may arrive while the bus pauses this generator
+            # at its final marker.
+            async with self._push_lock:
+                if self._session_id == sid:
+                    self._session_id = None
+                    self._audio_q = None
+                    self._stream_task = None
             yield Audio(
                 data=np.array([], dtype=np.float32), sample_rate=sample_rate, end=True
             )
@@ -109,9 +116,11 @@ class StreamingTTS(ModuleWithHandle):
                 if stream_task is not None:
                     stream_task.cancel()  # interrupted: stop draining
                 # No await before this reset: a second cancel must not skip it.
-                self._session_id = None
-                self._audio_q = None
-                self._stream_task = None
+                # A completed generator can close after another session has opened.
+                if self._session_id == sid:
+                    self._session_id = None
+                    self._audio_q = None
+                    self._stream_task = None
                 if not finished:
                     # shield: a second cancel must not drop the replica cleanup
                     await asyncio.shield(self._handle.end_session.remote(sid))

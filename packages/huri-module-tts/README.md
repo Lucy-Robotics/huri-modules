@@ -12,6 +12,8 @@ a host installs only the engine it runs:
 Both are built on `huri_tts.streaming.StreamingTTS`, the engine-agnostic half:
 it opens one synthesis session per utterance, pushes each `huri.token` into it
 in order and streams `huri.audio.out` back with presentation timestamps.
+The final audio end marker releases the completed session before publication,
+so the next answer starts a new session even while the previous generator is paused.
 
 The base install has no engine library; `[tool.huri-modules.extras]` in
 `pyproject.toml` names the extra each module needs (`huri hub install` and
