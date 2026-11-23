@@ -1,4 +1,4 @@
-# huri-module-lips-sync
+# huri-module-lipsync
 
 Lip sync for HuRI: the face that goes with the voice. The `lips` module hears
 what HuRI says and streams **ARKit blend shape weights** (jawOpen,

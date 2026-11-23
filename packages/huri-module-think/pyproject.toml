@@ -9,7 +9,7 @@ description = "HuRI modules: generated thinking motion and thinking aloud while 
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "huri-core[server]>=0.5.0.dev0,<0.6",
+  "huri-core[server]>=0.5,<0.6",
   "huri-events>=0.1,<0.4",          # the curated events it consumes and emits
   "numpy>=1.26,<2",
 ]

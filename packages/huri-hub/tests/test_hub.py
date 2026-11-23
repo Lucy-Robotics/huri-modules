@@ -447,7 +447,7 @@ def test_its_dependencies_are_its_own():
     # Version ranges and TOML: huri-hub declares them, so it needs no extra of
     # huri-core (the base install, with no third-party dependency, is enough).
     requires = PYPROJECT["dependencies"]
-    assert "huri-core>=0.5.0.dev0,<0.6" in requires
+    assert "huri-core>=0.5,<0.6" in requires
     assert "packaging>=23" in requires
     assert "tomli>=2; python_version < '3.11'" in requires
 

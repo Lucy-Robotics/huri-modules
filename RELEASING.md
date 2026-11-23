@@ -47,9 +47,9 @@ follows these rules:
   skips it, for a deliberate run against an older core only).
 
 Packages pin huri-core with a range of one minor version: today
-`huri-core>=0.4,<0.5` (in each `pyproject.toml`, `huri_module.toml` and
+`huri-core>=0.5,<0.6` (in each `pyproject.toml`, `huri_module.toml` and
 `registry.toml` entry). While work targets an untagged core minor, the lower
-bound is its `.dev0` (`>=0.5.0.dev0,<0.6`, step 5 of the checklist below).
+bound is its `.dev0` (`>=0.6.0.dev0,<0.7`, step 5 of the checklist below).
 The range and `HURI_CORE_REF` always move together: a range that does not
 contain the core `HURI_CORE_REF` installs fails the tests, the image builds
 (`deploy/install_huri.sh` checks the manifests) and the server's startup.
@@ -113,12 +113,13 @@ the key to fix.
 |---|---|
 | 0.1.x | 0.4.x |
 | 0.2.x | 0.4.x |
+| 0.3.x | 0.5.x |
 
 A huri-modules minor line supports one huri-core minor line (huri-core may break
 its public surface in a minor bump while it is `0.x`, see its RELEASING.md). A
 huri-core patch release needs no huri-modules release; a huri-core minor
-release needs a huri-modules minor release: `0.2.0` is built against huri-core
-`0.4.1`, and huri-core `0.5.x` will need huri-modules `0.3.0`.
+release needs a huri-modules minor release: `0.3.0` is built against huri-core
+`0.5.0`, and huri-core `0.6.x` will need huri-modules `0.4.0`.
 `huri hub` reads the registry at `HURI_MODULES_REF` (`main`, the latest
 release, by default): pick the huri-modules tag of this table that matches your
 huri-core.
@@ -199,8 +200,8 @@ GitHub publisher with owner `Lucy-Robotics`, repository `huri-modules`,
 workflow `release.yml` and environment `pypi`:
 
 - `huri-modules` (the metapackage), `huri-events` and `huri-hub`;
-- every `huri-module-*` under `packages/` (`huri-module-emo`, `-mov`, `-rag`,
-  `-stt`, `-tag`, `-tts`, `-vad` today).
+- every `huri-module-*` under `packages/` (`huri-module-emo`, `-lipsync`, `-mov`, `-rag`,
+  `-stt`, `-tag`, `-think`, `-tts`, `-vad` today).
 
 A package that is not on PyPI yet needs a *pending* publisher (pypi.org →
 Your account → Publishing, same values, with the project name) before the

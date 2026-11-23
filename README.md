@@ -158,7 +158,7 @@ rejected with a `session_error` naming both sets.
 | [`huri-module-rag`](packages/huri-module-rag) | `rag`, `qag` | answers from memory with an LLM, streaming tokens, told how the user sounded; joins a transcript and its emotion into a question, without waiting for the emotion (`mode: parallel`, the default) or after it (`sequential`); ingestion and memory tools |
 | [`huri-module-mov`](packages/huri-module-mov) | `mov` | SMPL-X co-speech gestures (EMAGE, vendored model code) |
 | [`huri-module-think`](packages/huri-module-think) | `think`, `think_say`, `think_token`, `think_stop` | fills the wait between a question and its answer: `think` streams generated SMPL-X thinking poses (`huri.motion`), `think_say` thinks aloud ("hmm...", "let me think about that") in the TTS's Piper voice (extra `piper`); `think_token` and `think_stop` silence them when the answer is written, then heard. No GPU |
-| [`huri-module-lips-sync`](packages/huri-module-lips-sync) | `lips`, `tts_phonemes` | lip sync: `lips` streams 52 ARKit blend shape weights at 30 fps in step with the voice (`huri.lips.face`), from LAM Audio2Expression on a GPU or a CPU (extra `lam`); `tts_phonemes` is Piper text to speech whose audio carries its phoneme timings, for exact lip sync, wired instead of `tts` (extra `piper`) |
+| [`huri-module-lipsync`](packages/huri-module-lipsync) | `lips`, `tts_phonemes` | lip sync: `lips` streams 52 ARKit blend shape weights at 30 fps in step with the voice (`huri.lips.face`), from LAM Audio2Expression on a GPU or a CPU (extra `lam`); `tts_phonemes` is Piper text to speech whose audio carries its phoneme timings, for exact lip sync, wired instead of `tts` (extra `piper`) |
 | [`huri-module-tts`](packages/huri-module-tts) | `tts`, `tts_cosyvoice` | speaks the reply: `tts` is the default engine, Piper (ONNX, any CPU; extra `piper`); `tts_cosyvoice` clones a voice with CosyVoice3 (NVIDIA; extra `cosyvoice`), wired instead of `tts` |
 | [`huri-hub`](packages/huri-hub) | — | `huri hub`: finds and installs modules (a tool, not in the registry; it reads it) |
 
@@ -171,7 +171,7 @@ package whose modules need different stacks gives each module an extra
 `huri-module-emo[model]` is `emo`'s classifier (torch, transformers) and
 `huri-module-rag[rag]` is `rag`'s retrieval stack, which their aggregators
 `eag` and `qag` do not need; `huri-module-think[piper]` is `think_say`'s voice,
-and `huri-module-lips-sync[lam]` is `lips`' model. The installer does not plan
+and `huri-module-lipsync[lam]` is `lips`' model. The installer does not plan
 `think` and `lips` yet (`--modules` does not know them): install and enable them
 by hand, as each package's README shows. Without a checkout, the
 [`huri-modules` metapackage](meta/README.md) picks modules by name from PyPI
@@ -214,6 +214,7 @@ The installer, the Docker images and CI all read that one file
 |---|---|
 | 0.1.x | 0.4.x |
 | 0.2.x | 0.4.x |
+| 0.3.x | 0.5.x |
 
 CI tests every change against the pinned core (blocking) and against
 huri-core's `dev` branch (non-blocking), so a breaking core change shows up
@@ -482,9 +483,9 @@ the modules picked are installed, so the server sees nothing else
 
 ```sh
 # a server with three modules (each module brings huri-core[server] and huri-events)
-pip install "huri-modules[vad,stt,tts]==0.1.1"
+pip install "huri-modules[vad,stt,tts]==0.3.0"
 # a client: the SDK, the curated topics and the reference CLI (no Ray)
-pip install "huri-core[client]>=0.4,<0.5" "huri-events>=0.1,<0.2" huri-cli
+pip install "huri-core[client]>=0.5,<0.6" "huri-events>=0.3,<0.4" huri-cli
 ```
 
 pip installs the default PyTorch build: for a GPU (CUDA, ROCm), for CosyVoice,
@@ -513,8 +514,8 @@ pip install "huri-core[server] @ $CORE" \
 
 From git, give huri-core, huri-events and huri-cli as git URLs on the same
 command line as what depends on them, so pip takes them from git and not from
-an index. Use release tags, a huri-core `0.4.x` with a
-huri-modules `0.2.x` (see [Versions](#versions-and-compatibility)); without a
+an index. Use release tags, a huri-core `0.5.x` with a
+huri-modules `0.3.x` (see [Versions](#versions-and-compatibility)); without a
 ref pip takes the repository's default branch. `[server]` is Ray Serve + FastAPI and the pins that
 keep them working; each module package declares its own dependencies, and the
 GPU ones ship `requirements-<variant>[.<module>].txt` pins next to it.
@@ -642,9 +643,9 @@ name = "servo"                     # its huri.modules entry point name
 summary = "Gesture to servo angle arrays"
 input = { topic = "huri.motion", event = "huri_events.motion:Motion" }
 output = { topic = "acme.servo_angles", event = "huri_events_servo:ServoAngles" }  # omit for a terminal module
-events = ["huri-events>=0.2,<0.3", "huri-events-servo>=0.1,<0.2"]                  # optional
+events = ["huri-events>=0.3,<0.4", "huri-events-servo>=0.1,<0.2"]                  # optional
 requires = { gpu = false, actuation = false }                                      # optional
-huri_core = ">=0.4,<0.5"
+huri_core = ">=0.5,<0.6"
 ```
 
 At startup the server checks every enabled module that has one: its topics and

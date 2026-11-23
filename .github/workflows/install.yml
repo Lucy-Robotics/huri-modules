@@ -80,10 +80,17 @@ jobs:
         # individual lines too so a silently skipped check is visible.
         run: |
           log=.huri-local/install.log
-          for want in "core imports" "module registry builds" "huri-cli imports" "STT model loads"; do
+          for want in "core imports" "module registry builds" "STT model loads"; do
             grep -q "OK    $want" "$log" \
               || { echo "::error::missing verification: $want"; exit 1; }
           done
+          # huri-cli is optional: no release supporting this core yet is a warning, not a failure.
+          if grep -q "WARN  no huri-cli release on PyPI supports" "$log"; then
+            echo "::warning::no huri-cli release supports this huri-core yet: installed without the client"
+          else
+            grep -q "OK    huri-cli imports" "$log" \
+              || { echo "::error::missing verification: huri-cli imports"; exit 1; }
+          fi
           if [ "${{ github.event.inputs.tts_engine || 'piper' }}" = "piper" ]; then
             grep -q "OK    piper synthesises" "$log" \
               || { echo "::error::piper did not synthesise"; exit 1; }

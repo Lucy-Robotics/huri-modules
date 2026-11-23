@@ -14,7 +14,7 @@ release, so a server sees only the modules you picked. The version of
 `huri-modules` is the release of the
 [huri-modules repository](https://github.com/Lucy-Robotics/huri-modules), which
 lists what each release contains and the huri-core it supports
-(huri-modules 0.1.x: huri-core 0.4.x).
+(huri-modules 0.3.x: huri-core 0.5.x).
 
 | Extra | Module | Package |
 |---|---|---|
@@ -34,8 +34,8 @@ lists what each release contains and the huri-core it supports
 | `think-say` | thinks aloud in the TTS's Piper voice until the answer starts | `huri-module-think` |
 | `think-token` | silences `think_say` once the answer is being written | `huri-module-think` |
 | `think-stop` | ends the thinking when the answer is heard | `huri-module-think` |
-| `lips` | lip sync: ARKit blend shapes in step with the voice (LAM) | `huri-module-lips-sync` |
-| `tts-phonemes` | Piper text to speech carrying its phoneme timings, for lip sync | `huri-module-lips-sync` |
+| `lips` | lip sync: ARKit blend shapes in step with the voice (LAM) | `huri-module-lipsync` |
+| `tts-phonemes` | Piper text to speech carrying its phoneme timings, for lip sync | `huri-module-lipsync` |
 | `events` | the `huri.*` events only | `huri-events` |
 | `hub` | `huri hub` | `huri-hub` |
 
