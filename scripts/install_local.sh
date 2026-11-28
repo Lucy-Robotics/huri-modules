@@ -249,8 +249,9 @@ no Ollama/Qdrant is installed for it, and it costs no local VRAM/RAM)
       --force-emo         Keep prosody/emotion even when RAM is tight
       --modules LIST      Explicit module allow-list instead of the planned one,
                           e.g. --modules vad,stt,tag,qag,rag  (text pipeline) or
-                          --modules rag (text in, text out). Subset of:
-                          vad,stt,tag,emo,eag,qag,rag,tts,mov
+                          --modules rag (text in, text out). Any module
+                          of registry.toml (tts_cosyvoice through --tts-engine);
+                          hub modules get no budget or model
       --stt-device D      gpu | cpu — override where speech-to-text runs
 
 Install
@@ -487,14 +488,28 @@ declare -A MODULE_NEEDS=(
   [qag]="tag rag" [rag]="" [tts]="rag" [mov]="tts"
 )
 module_set_problems() { # "a,b,c" -> one line per missing module, none if it answers
-  local set=",$1," m need
+  local set=",$1," m need topic o
   local -a mods
   IFS=',' read -r -a mods <<<"$1"
   (( ${#mods[@]} )) || { echo "  no module: rag is the one that answers"; return; }
   for m in "${mods[@]}"; do
-    for need in ${MODULE_NEEDS[$m]}; do
-      [[ "$set" == *",$need,"* ]] || echo "  $m needs $need"
+    if [[ -n "${MODULE_NEEDS[$m]+set}" ]]; then
+      for need in ${MODULE_NEEDS[$m]}; do
+        [[ "$set" == *",$need,"* ]] || echo "  $m needs $need"
+      done
+      continue
+    fi
+    # A hub module: its input must come from a module of the set or the client
+    # (which sends what client_config says: audio with vad, questions with rag).
+    topic="$(manifest_port "$m" input)"
+    [[ -z "$topic" ]] && continue
+    [[ "$topic" == huri.audio.in && "$set" == *",vad,"* ]] && continue
+    [[ "$topic" == huri.question && "$set" == *",rag,"* ]] && continue
+    local fed=0
+    for o in "${mods[@]}"; do
+      [[ "$(manifest_port "$o" output)" == "$topic" ]] && { fed=1; break; }
     done
+    (( fed )) || echo "  $m needs $topic, which no module of this set emits"
   done
 }
 served_modules() { # P_MODULES with the engine's TTS module name
@@ -502,6 +517,23 @@ served_modules() { # P_MODULES with the engine's TTS module name
   IFS=',' read -r -a mods <<<"$P_MODULES"
   for m in "${mods[@]}"; do [[ "$m" == "tts" ]] && m="$(tts_module)"; out+=("$m"); done
   (IFS=,; echo "${out[*]}")
+}
+
+# shortcut: every registry module is a packages/ package of this repo (source =
+# path, true for all 18 today); a git/submodule source would fail later in
+# module_requirements.py; handle it when the first one is listed.
+registry_modules() { # every [[module]] name of registry.toml
+  awk '/^\[/ { inb = ($0 == "[[module]]") } inb && /^name = / { sub(/ *#.*/, ""); gsub(/^name = "|"$/, ""); print }' \
+    "$REPO_ROOT/registry.toml"
+}
+manifest_port() { # <module> input|output -> that port's topic, empty when it has none
+  local f
+  for f in "$REPO_ROOT"/packages/*/*/huri_module.toml \
+           "$REPO_ROOT"/packages/*/*/manifests/*/huri_module.toml; do
+    grep -sqx "name = \"$1\"" "$f" || continue
+    sed -n "s/^$2 = { topic = \"\([^\"]*\)\".*/\1/p" "$f"
+    return
+  done
 }
 
 # --- ROCm helpers ------------------------------------------------------------
@@ -1152,7 +1184,9 @@ plan() {
   fi
 
   if [[ -n "$MODULES_OVERRIDE" ]]; then
-    local known="vad stt tag emo eag qag rag tts mov" m bad=()
+    local known m bad=()
+    known="$(registry_modules | tr '\n' ' ')"
+    known="${known% }"
     local -a wanted=()
     IFS=',' read -r -a wanted <<<"$MODULES_OVERRIDE"
     for m in "${wanted[@]}"; do
@@ -1161,6 +1195,8 @@ plan() {
       [[ " $known " == *" $m "* ]] || bad+=("$m")
     done
     (( ${#bad[@]} )) && die "--modules lists unknown module(s): ${bad[*]}. Known: $known"
+    [[ ",${MODULES_OVERRIDE// /}," == *",tts_cosyvoice,"* ]] &&
+      die "--modules: tts_cosyvoice is not listed by name, use tts with --tts-engine cosyvoice"
     P_MODULES="$(IFS=,; echo "${wanted[*]// /}")"
     P_MODULES="$(echo "$P_MODULES" | tr -s ',' | sed 's/^,//; s/,$//')"
     local problems

@@ -125,7 +125,7 @@ additionally unlocks CosyVoice and gesture generation.
 The plan is a starting point, not a cage.
 
 ```sh
-# Only the modules you name (subset of vad,stt,tag,emo,eag,qag,rag,tts,mov)
+# Only the modules you name (any module of registry.toml, think and lips included; tts_cosyvoice through --tts-engine)
 ./install.sh --modules vad,stt,tag,qag,rag              # voice in, text out
 ./install.sh --modules rag                              # text in, text out
 
@@ -171,9 +171,12 @@ package whose modules need different stacks gives each module an extra
 `huri-module-emo[model]` is `emo`'s classifier (torch, transformers) and
 `huri-module-rag[rag]` is `rag`'s retrieval stack, which their aggregators
 `eag` and `qag` do not need; `huri-module-think[piper]` is `think_say`'s voice,
-and `huri-module-lipsync[lam]` is `lips`' model. The installer does not plan
-`think` and `lips` yet (`--modules` does not know them): install and enable them
-by hand, as each package's README shows. Without a checkout, the
+and `huri-module-lipsync[lam]` is `lips`' model. `--modules` takes any
+registry module, `think` and `lips` included: a hub module gets no VRAM/RAM
+budget and no model download beyond what `tts` brings (the Piper voice
+`think_say` defaults to, when `tts` is planned); the LAM weights of `lips`, and
+the Piper voice when `tts` is not planned, come from their READMEs, as with
+`huri hub`, and the installer refuses a set where nothing feeds its input. Without a checkout, the
 [`huri-modules` metapackage](meta/README.md) picks modules by name from PyPI
 (`pip install "huri-modules[emo,eag]"`, see
 [Installing as packages](#installing-as-packages-without-a-checkout)); from git,

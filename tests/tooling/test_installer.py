@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -239,6 +240,8 @@ def installer_copy(tmp_path, versions=None):
         shutil.copy(ROOT / "versions.env", repo)
     else:
         (repo / "versions.env").write_text(versions)
+    shutil.copy(ROOT / "registry.toml", repo)  # plan() reads both with --modules
+    (repo / "packages").symlink_to(ROOT / "packages")
     return repo
 
 
@@ -458,3 +461,71 @@ def test_every_package_manager_installs_zstd_for_ollama():
     lists = re.findall(r"SYS_PKGS=\(([^)]+)\)", INSTALLER.read_text())
     assert len(lists) == 4
     assert all("zstd" in packages.split() for packages in lists)
+
+
+def plan_modules(tmp_path, *flags):
+    """--plan-only on a faked CPU-only machine; the process, whatever its exit."""
+    bin_dir, _ = fake_git(tmp_path)
+    repo = installer_copy(tmp_path)
+    script = repo / "scripts" / "install_local.sh"
+    head, tail = script.read_text().rsplit('main "$@"', 1)
+    assert not tail.strip()
+    fakes = (
+        "detect_host() { CPU_CORES=8; RAM_TOTAL_MB=32768; "
+        "RAM_FREE_MB=30000; DISK_FREE_MB=500000; }\n"
+        f'detect_python() {{ PY_BIN="{sys.executable}"; PY_VERSION=3.12.0; }}\n'
+        'detect_tools() { HAS_DOCKER=""; HAS_OLLAMA=0; }\n'
+    )
+    script.write_text(head + fakes + 'main "$@"\n')
+    out = subprocess.run(
+        [str(repo / "install.sh"), "--plan-only", "--profile", "cpu", *flags],
+        cwd=repo,
+        env=env_with(bin_dir),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    out.repo = repo
+    return out
+
+
+def served(out):
+    assert out.returncode == 0, out.stdout + out.stderr
+    plan = (out.repo / ".huri-local" / "plan.env").read_text()
+    return re.search(r"^HURI_MODULES=(.*)$", plan, re.M).group(1)
+
+
+def test_a_hub_module_in_modules(tmp_path):
+    out = plan_modules(tmp_path, "--modules", "vad,stt,tag,qag,rag,think")
+    assert served(out) == "vad,stt,tag,qag,rag,think"
+
+
+def test_a_registry_module_that_is_not_installed(tmp_path):
+    out = plan_modules(tmp_path, "--modules", "vad,stt,tag,qag,rag,tts,lips")
+    assert served(out) == "vad,stt,tag,qag,rag,tts,lips"
+
+
+def test_a_name_that_is_in_no_registry(tmp_path):
+    out = plan_modules(tmp_path, "--modules", "vad,stt,typo")
+    text = out.stdout + out.stderr
+    assert out.returncode != 0
+    registry = tomllib.loads((ROOT / "registry.toml").read_text())
+    assert "typo" in text
+    assert all(m["name"] in text for m in registry["module"])
+
+
+def test_the_plan_still_checks_the_pipeline(tmp_path):
+    out = plan_modules(tmp_path, "--modules", "rag,think_stop")
+    assert out.returncode != 0
+    assert "think_stop needs huri.audio.out" in out.stdout + out.stderr
+
+
+def test_a_hub_module_fed_by_the_client_is_accepted(tmp_path):
+    assert served(plan_modules(tmp_path, "--modules", "rag,think")) == "rag,think"
+
+
+def test_tts_cosyvoice_is_asked_for_through_tts(tmp_path):
+    out = plan_modules(tmp_path, "--modules", "rag,tts_cosyvoice")
+    assert out.returncode != 0
+    assert "use tts with --tts-engine cosyvoice" in out.stdout + out.stderr
