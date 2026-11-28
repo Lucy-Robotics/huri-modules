@@ -18,7 +18,7 @@ it with): this checks every entry with it, then what needs this repository. A
 `source` is one of two kinds:
 
     source = { path = "packages/huri-module-stt" }       # curated, in this repo
-    source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0",
+    source = { git = "https://github.com/acme/servo", tag = "0.1.0",
                submodule = "modules/servo" }            # verified third party
                # optional: subdirectory = "<dir in that repository>"
 

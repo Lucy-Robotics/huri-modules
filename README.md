@@ -602,10 +602,10 @@ just checked out.
 
 ```toml
 [project.entry-points."huri.modules"]
-servo = "huri_servo.module:Servo"          # usable as `name: servo`
+servo = "servo.module:Servo"          # usable as `name: servo`
 
 [project.entry-points."huri.events"]
-"acme.servo_angles" = "huri_servo.events:ServoAngles"
+"acme.servo_angles" = "servo.events:ServoAngles"
 ```
 
 Event topics are namespaced, `<namespace>.<name>`. The curated topics are
@@ -642,8 +642,8 @@ tooling can reason about the module without importing it:
 name = "servo"                     # its huri.modules entry point name
 summary = "Gesture to servo angle arrays"
 input = { topic = "huri.motion", event = "huri_events.motion:Motion" }
-output = { topic = "acme.servo_angles", event = "huri_events_servo:ServoAngles" }  # omit for a terminal module
-events = ["huri-events>=0.3,<0.4", "huri-events-servo>=0.1,<0.2"]                  # optional
+output = { topic = "acme.servo_angles", event = "servo_events:ServoAngles" }  # omit for a terminal module
+events = ["huri-events>=0.3,<0.4", "servo-events>=0.1,<0.2"]                  # optional
 requires = { gpu = false, actuation = false }                                      # optional
 huri_core = ">=0.5,<0.6"
 ```
@@ -720,7 +720,7 @@ says what a listing requires. An entry's `source` is one of two kinds:
 # a curated module of this repository
 source = { path = "packages/huri-module-stt" }
 # a verified third-party module, pinned as a git submodule at a tag
-source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0", submodule = "modules/servo" }
+source = { git = "https://github.com/acme/servo", tag = "0.1.0", submodule = "modules/servo" }
 # (optional key: subdirectory = "<dir>", when the package is not at the root of its repository)
 ```
 
@@ -741,14 +741,14 @@ from the entry's `git` URL (in `.gitmodules`) and is at the commit the entry's
 (`git+<git>@<tag>`); a tag the author moves afterwards fails the next CI run:
 
 ```sh
-git submodule add https://github.com/acme/huri-module-servo modules/servo
+git submodule add https://github.com/acme/servo modules/servo
 git -C modules/servo checkout 0.1.0          # the reviewed tag
 git add .gitmodules modules/servo
 ```
 
 Then add its `[[module]]` entry to `registry.toml` — the `name`, `package`,
 `summary`, `huri_core` and `verified` keys of [ACCEPTANCE.md](ACCEPTANCE.md), and
-`source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0", submodule = "modules/servo" }`
+`source = { git = "https://github.com/acme/servo", tag = "0.1.0", submodule = "modules/servo" }`
 — install it (`pip install -e modules/servo`, or
 `pip install -e modules/servo/<subdirectory>` when the entry has one;
 `python check_registry.py --install-dirs` prints those directories, which is

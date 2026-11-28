@@ -5,7 +5,7 @@ tag of its author's repository: `modules/<name>`, listed in
 [`registry.toml`](../registry.toml) with
 
 ```toml
-source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0", submodule = "modules/servo" }
+source = { git = "https://github.com/acme/servo", tag = "0.1.0", submodule = "modules/servo" }
 ```
 
 None is listed yet. The curated, first-party modules are not here: they live

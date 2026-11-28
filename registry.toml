@@ -7,7 +7,7 @@
 #   source = { path = "packages/<package>" }
 #       a curated package of this repository, installed (by `huri hub` too) as
 #       git+https://github.com/Lucy-Robotics/huri-modules.git@<ref>#subdirectory=<path>
-#   source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0", submodule = "modules/servo" }
+#   source = { git = "https://github.com/acme/servo", tag = "0.1.0", submodule = "modules/servo" }
 #       a verified third-party module, pinned as a git submodule at that tag and
 #       installed as git+<git>@<tag> (optional key: subdirectory = "<dir>",
 #       appended as #subdirectory=<dir>)
