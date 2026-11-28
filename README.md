@@ -355,9 +355,19 @@ must match the one the server queries with**, or the vectors will not line up:
 ```sh
 source .huri-local/env.sh
 python -m huri_rag.ingestion --help
-python -m huri_rag.ingestion \
-  --embedding-model "$HURI_EMBED_MODEL" --embedding-url "$HURI_EMBED_URL" ...
+python -m huri_rag.ingestion --user-id __shared__ \
+  --embedding-model "$HURI_EMBED_MODEL" \
+  ${HURI_EMBED_URL:+--embedding-url "$HURI_EMBED_URL" --chunking fixed} ...
 ```
+
+`env.sh` exports `HURI_EMBED_MODEL` and `HURI_EMBED_URL`, the values the server
+uses. `--embedding-url` (an OpenAI-compatible endpoint) only works with
+`--chunking fixed`; when `HURI_EMBED_URL` is empty the model runs locally as a
+SentenceTransformer and the `${...}` part expands to nothing.
+
+`--user-id __shared__` makes the documents available to every user. Without
+it they are stored under your own id (`~/.huri_user_id`), and other clients,
+such as a Playground visitor with their own id, never retrieve them.
 
 Until you do, `--only verify` and the `RAGHandle` startup log both warn that the
 `documents` collection is missing and that retrieval will return nothing.

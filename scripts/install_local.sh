@@ -2528,6 +2528,11 @@ export HSA_OVERRIDE_GFX_VERSION=$GFX_OVERRIDE
 "
   fi
 
+  # %q: the values land in a sourced file. Empty URL = local SentenceTransformer.
+  local embed_export
+  embed_export="$(printf 'export HURI_EMBED_MODEL=%q\nexport HURI_EMBED_URL=%q' \
+    "$EMBED_MODEL" "$EMBED_URL_EFF")"
+
   write_file "$STATE_DIR/env.sh" <<EOF
 # shellcheck shell=bash
 # Source this for a shell configured exactly like a Serve replica:
@@ -2536,6 +2541,8 @@ export HSA_OVERRIDE_GFX_VERSION=$GFX_OVERRIDE
 #     python -m huri_rag.ingestion --help     # feed the RAG memory
 export HURI_ROOT="$REPO_ROOT"
 export HURI_STATE="$STATE_DIR"
+# The embedding model/endpoint the Serve config's rag uses, for ingestion.
+$embed_export
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 

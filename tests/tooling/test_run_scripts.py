@@ -78,6 +78,8 @@ def generate(tmp_path, **settings):
         "CPU_CORES": 4,
         "P_RAY_GPUS": 1,
         "INSTALL_CLI": 1,
+        "EMBED_MODEL": "BAAI/bge-large-en-v1.5",
+        "EMBED_URL_EFF": "http://llm.example",
         **settings,
     }
     script = tmp_path / "generate.sh"
@@ -159,6 +161,19 @@ def test_env_sh_sets_no_gpu_variable_a_single_gpu_does_not_need(tmp_path):
         "<unset>",
         "<unset>",
     ]
+
+
+def test_env_sh_exports_the_embedding_model_and_url(tmp_path):
+    state = generate(tmp_path)
+    assert sourced(state, "HURI_EMBED_MODEL", "HURI_EMBED_URL") == [
+        "BAAI/bge-large-en-v1.5",
+        "http://llm.example",
+    ]
+
+
+def test_env_sh_quotes_the_embedding_values(tmp_path):
+    state = generate(tmp_path, EMBED_MODEL="my model;x", EMBED_URL_EFF="")
+    assert sourced(state, "HURI_EMBED_MODEL", "HURI_EMBED_URL") == ["my model;x", ""]
 
 
 def test_stop_stops_the_ray_head_start_started(tmp_path, fakes):
