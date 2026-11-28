@@ -1463,6 +1463,20 @@ https://repo.radeon.com/rocm/apt/$ROCM_VERSION $codename main' \
     | ${sudo_cmd:+$sudo_cmd }tee /etc/apt/sources.list.d/rocm.list >/dev/null"
 }
 
+# pkg_installed <name> — true when $PKG_MGR reports <name> (or a package providing
+# it) installed. False when it cannot tell: the caller then installs it, a no-op
+# if present. Read-only, so deliberately not through run(): a dry run shows the
+# real plan.
+pkg_installed() {
+  # shellcheck disable=SC2016  # ${db:...} is dpkg-query's format, not ours
+  case "$PKG_MGR" in
+    apt)        have dpkg-query && [[ "$(dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null)" == installed ]] ;;
+    dnf|zypper) have rpm    && rpm -q --whatprovides "$1" >/dev/null 2>&1 ;;
+    pacman)     have pacman && pacman -T "$1" >/dev/null 2>&1 ;;
+    *)          return 1 ;;
+  esac
+}
+
 install_system_packages() {
   stage_enabled system || return 0
   (( SKIP_SYSTEM )) && { note "system packages skipped (--skip-system)"; return 0; }
@@ -1475,32 +1489,39 @@ install_system_packages() {
     return 0
   fi
 
-  # These packages are not optional — webrtcvad and the ROCm runtime are hard
-  # requirements — so a missing sudo has to stop the install, not warn and carry
-  # on until pip fails with something unrelated.
-  local sudo_cmd=""
-  [[ $EUID -ne 0 ]] && sudo_cmd="sudo"
-  if [[ -n "$sudo_cmd" ]]; then
-    if ! have sudo; then
-      die "no sudo and not root. Install these yourself, then re-run with --skip-system: ${pkgs[*]}"
-    elif ! sudo -n true 2>/dev/null; then
-      note "sudo will ask for your password"
+  local missing=() p
+  for p in "${pkgs[@]}"; do pkg_installed "$p" || missing+=("$p"); done
+
+  if (( ${#missing[@]} )); then
+    # These packages are not optional — webrtcvad and the ROCm runtime are hard
+    # requirements — so a missing sudo has to stop the install, not warn and carry
+    # on until pip fails with something unrelated.
+    local sudo_cmd=""
+    [[ $EUID -ne 0 ]] && sudo_cmd="sudo"
+    if [[ -n "$sudo_cmd" ]]; then
+      if ! have sudo; then
+        die "no sudo and not root. Install these yourself, then re-run with --skip-system: ${missing[*]}"
+      elif ! sudo -n true 2>/dev/null; then
+        note "sudo will ask for your password"
+      fi
     fi
+
+    [[ "$PKG_MGR" == "apt" && "$GPU_VENDOR" == "amd" ]] && add_rocm_apt_repo
+
+    info "  installing: ${missing[*]}"
+    case "$PKG_MGR" in
+      apt)    run ${sudo_cmd:+$sudo_cmd} apt-get update -qq
+              run ${sudo_cmd:+$sudo_cmd} env DEBIAN_FRONTEND=noninteractive apt-get install -y "${missing[@]}" ;;
+      dnf)    run ${sudo_cmd:+$sudo_cmd} dnf install -y "${missing[@]}" ;;
+              # -Sy, not -S: without a synced database --needed can resolve against
+              # a stale index and fail on a package that does exist.
+      pacman) run ${sudo_cmd:+$sudo_cmd} pacman -Sy --needed --noconfirm "${missing[@]}" ;;
+      zypper) run ${sudo_cmd:+$sudo_cmd} zypper install -y "${missing[@]}" ;;
+    esac
+    ok "system packages ready"
+  else
+    ok "system packages already installed"
   fi
-
-  [[ "$PKG_MGR" == "apt" && "$GPU_VENDOR" == "amd" ]] && add_rocm_apt_repo
-
-  info "  installing: ${pkgs[*]}"
-  case "$PKG_MGR" in
-    apt)    run ${sudo_cmd:+$sudo_cmd} apt-get update -qq
-            run ${sudo_cmd:+$sudo_cmd} env DEBIAN_FRONTEND=noninteractive apt-get install -y "${pkgs[@]}" ;;
-    dnf)    run ${sudo_cmd:+$sudo_cmd} dnf install -y "${pkgs[@]}" ;;
-            # -Sy, not -S: without a synced database --needed can resolve against
-            # a stale index and fail on a package that does exist.
-    pacman) run ${sudo_cmd:+$sudo_cmd} pacman -Sy --needed --noconfirm "${pkgs[@]}" ;;
-    zypper) run ${sudo_cmd:+$sudo_cmd} zypper install -y "${pkgs[@]}" ;;
-  esac
-  ok "system packages ready"
 
   # ROCm talks to the kernel through /dev/kfd and /dev/dri/renderD*. On Ubuntu
   # those are 0660 root:render, so group membership is a hard requirement there;

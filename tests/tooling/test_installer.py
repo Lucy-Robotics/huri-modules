@@ -458,3 +458,103 @@ def test_every_package_manager_installs_zstd_for_ollama():
     lists = re.findall(r"SYS_PKGS=\(([^)]+)\)", INSTALLER.read_text())
     assert len(lists) == 4
     assert all("zstd" in packages.split() for packages in lists)
+
+
+FAKE_QUERY = """#!/bin/sh
+echo "$(basename "$0") $*" >>"{log}"
+for last; do :; done
+case " $MISSING " in *" $last "*) exit 1 ;; esac
+[ "$(basename "$0")" = dpkg-query ] && printf installed
+exit 0
+"""
+
+DNF_PACKAGES = (
+    re.search(r"dnf\)\s+SYS_PKGS=\(([^)]+)\)", INSTALLER.read_text()).group(1).split()
+)
+INSTALL_LINE = {
+    "dnf": "sudo dnf install -y git zstd",
+    "apt": "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y git zstd",
+    "pacman": "sudo pacman -Sy --needed --noconfirm git zstd",
+    "zypper": "sudo zypper install -y git zstd",
+}
+QUERY_TOOL = {"dnf": "rpm", "apt": "dpkg-query", "pacman": "pacman", "zypper": "rpm"}
+needs_sudo = pytest.mark.skipif(os.geteuid() == 0, reason="root does not use sudo")
+
+
+def system_stage(tmp_path, mgr, missing, no_tools=()):
+    """The installer's system stage for `mgr`, with fake query tools that report
+    `missing` packages as absent and a fake sudo/package manager that only log.
+    Returns the process and the logged calls."""
+    log = tmp_path / "calls.log"
+    log.touch()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for tool in ("rpm", "dpkg-query", "pacman"):
+        (bin_dir / tool).write_text(FAKE_QUERY.format(log=log))
+    for tool in ("sudo", "apt-get", "dnf", "zypper"):
+        (bin_dir / tool).write_text(STUB.format(log=log))
+    for tool in bin_dir.iterdir():
+        tool.chmod(0o755)
+    script = tmp_path / "system.sh"
+    script.write_text(
+        "set -Eeuo pipefail\n"
+        f'PKG_MGR={mgr}; GPU_VENDOR=none; PY_VERSION=""; PY_BIN=""\n'
+        "SKIP_SYSTEM=0; DRY_RUN=0\n"
+        "stage_enabled() { :; }\n"
+        'run() { "$@"; }\n'
+        "info() { :; }; note() { :; }; warn() { :; }; step() { :; }\n"
+        'ok() { echo "OK $*"; }\n'
+        'die() { echo "DIE $*"; exit 1; }\n'
+        + section(
+            INSTALLER.read_text(), "SYS_PKGS=()", "# 4. Stage: Python environment"
+        )
+        # After the section: real rpm/dpkg-query/sudo exist here, PATH cannot hide them.
+        + 'have() { case " ${NO_TOOLS:-} " in *" $1 "*) return 1;; esac;'
+        ' command -v "$1" >/dev/null 2>&1; }\n'
+        "install_system_packages\n"
+    )
+    env = env_with(bin_dir, MISSING=" ".join(missing), NO_TOOLS=" ".join(no_tools))
+    out = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env)
+    return out, log.read_text().splitlines()
+
+
+def changes(calls, mgr):
+    return [c for c in calls if not c.startswith(QUERY_TOOL[mgr] + " ")]
+
+
+@pytest.mark.parametrize("mgr", ["dnf", "apt", "pacman", "zypper"])
+def test_every_system_package_is_installed(tmp_path, mgr):
+    out, calls = system_stage(tmp_path, mgr, missing=[])
+    assert out.returncode == 0, out.stderr
+    assert changes(calls, mgr) == []
+    assert "OK system packages already installed" in out.stdout
+
+
+@needs_sudo
+@pytest.mark.parametrize("mgr", ["dnf", "apt", "pacman", "zypper"])
+def test_some_packages_are_missing(tmp_path, mgr):
+    out, calls = system_stage(tmp_path, mgr, missing=["git", "zstd"])
+    assert out.returncode == 0, out.stderr
+    assert [c for c in calls if " install" in c or "-Sy" in c] == [INSTALL_LINE[mgr]]
+
+
+@needs_sudo
+def test_the_package_manager_cannot_tell(tmp_path):
+    out, calls = system_stage(tmp_path, "dnf", missing=[], no_tools=["rpm"])
+    assert out.returncode == 0, out.stderr
+    assert f"sudo dnf install -y {' '.join(DNF_PACKAGES)}" in calls
+
+
+@needs_sudo
+def test_no_sudo_nothing_missing(tmp_path):
+    out, calls = system_stage(tmp_path, "dnf", missing=[], no_tools=["sudo"])
+    assert out.returncode == 0, out.stdout
+    assert "OK system packages already installed" in out.stdout
+
+
+@needs_sudo
+def test_no_sudo_names_only_the_missing_packages(tmp_path):
+    out, _ = system_stage(tmp_path, "dnf", missing=["git", "zstd"], no_tools=["sudo"])
+    assert out.returncode == 1
+    assert "DIE no sudo and not root" in out.stdout
+    assert "--skip-system: git zstd" in out.stdout
