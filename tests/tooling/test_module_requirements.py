@@ -258,3 +258,7 @@ def test_parser_without_tomllib_reads_extras(tmp_path, monkeypatch):
     assert expected.optional["ex"] == ["piper-tts>=1.8,<1.9", "x"]
     monkeypatch.setitem(sys.modules, "tomllib", None)
     assert mr.read_pyproject(path) == expected
+
+
+def test_a_hub_module_brings_its_extra():
+    assert any("huri-module-lipsync[lam]" in line for line in merged("cpu", ["lips"]))

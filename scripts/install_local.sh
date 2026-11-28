@@ -249,8 +249,11 @@ no Ollama/Qdrant is installed for it, and it costs no local VRAM/RAM)
       --force-emo         Keep prosody/emotion even when RAM is tight
       --modules LIST      Explicit module allow-list instead of the planned one,
                           e.g. --modules vad,stt,tag,qag,rag  (text pipeline) or
-                          --modules rag (text in, text out). Subset of:
-                          vad,stt,tag,emo,eag,qag,rag,tts,mov
+                          --modules rag (text in, text out). Any module
+                          of registry.toml (tts_cosyvoice through --tts-engine);
+                          hub modules get no budget or model. The modules in
+                          .huri-local/modules.enabled (huri hub enable) are
+                          added to the list, or to the planned one without it
       --stt-device D      gpu | cpu — override where speech-to-text runs
 
 Install
@@ -284,6 +287,7 @@ Outputs
   .huri-local/                    plan.env, env.sh, start.sh, stop.sh, status.sh
   config/huri_local.generated.yaml       Ray Serve config for this machine
   config/client_local.generated.yaml     matching client config
+  (read) .huri-local/modules.enabled     modules added to the plan by huri hub
 USAGE
 }
 
@@ -487,14 +491,28 @@ declare -A MODULE_NEEDS=(
   [qag]="tag rag" [rag]="" [tts]="rag" [mov]="tts"
 )
 module_set_problems() { # "a,b,c" -> one line per missing module, none if it answers
-  local set=",$1," m need
+  local set=",$1," m need topic o
   local -a mods
   IFS=',' read -r -a mods <<<"$1"
   (( ${#mods[@]} )) || { echo "  no module: rag is the one that answers"; return; }
   for m in "${mods[@]}"; do
-    for need in ${MODULE_NEEDS[$m]}; do
-      [[ "$set" == *",$need,"* ]] || echo "  $m needs $need"
+    if [[ -n "${MODULE_NEEDS[$m]+set}" ]]; then
+      for need in ${MODULE_NEEDS[$m]}; do
+        [[ "$set" == *",$need,"* ]] || echo "  $m needs $need"
+      done
+      continue
+    fi
+    # A hub module: its input must come from a module of the set or the client
+    # (which sends what client_config says: audio with vad, questions with rag).
+    topic="$(manifest_port "$m" input)"
+    [[ -z "$topic" ]] && continue
+    [[ "$topic" == huri.audio.in && "$set" == *",vad,"* ]] && continue
+    [[ "$topic" == huri.question && "$set" == *",rag,"* ]] && continue
+    local fed=0
+    for o in "${mods[@]}"; do
+      [[ "$(manifest_port "$o" output)" == "$topic" ]] && { fed=1; break; }
     done
+    (( fed )) || echo "  $m needs $topic, which no module of this set emits"
   done
 }
 served_modules() { # P_MODULES with the engine's TTS module name
@@ -502,6 +520,45 @@ served_modules() { # P_MODULES with the engine's TTS module name
   IFS=',' read -r -a mods <<<"$P_MODULES"
   for m in "${mods[@]}"; do [[ "$m" == "tts" ]] && m="$(tts_module)"; out+=("$m"); done
   (IFS=,; echo "${out[*]}")
+}
+
+# The modules `huri hub enable` recorded (shared contract with huri-hub): one
+# name per line, blank lines and # comments ignored. Dies naming a bad line.
+ENABLED_FILE=".huri-local/modules.enabled"
+enabled_modules() {
+  local line n=0
+  [[ -f "$REPO_ROOT/$ENABLED_FILE" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    n=$((n + 1))
+    line="$(sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//' <<<"$line")"
+    [[ -z "$line" ]] && continue
+    [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_.:]*$ ]] ||
+      die "$ENABLED_FILE line $n: '$line' is not a module name (one per line)"
+    echo "$line"
+  done <"$REPO_ROOT/$ENABLED_FILE"
+}
+served_modules_listed() { # served_modules without what no packages/ dir has
+  local m
+  for m in $(served_modules | tr ',' ' '); do
+    [[ ",$P_UNLISTED," == *",$m,"* ]] || echo "$m"
+  done | paste -sd,
+}
+
+# shortcut: every registry module is a packages/ package of this repo (source =
+# path, true for all 18 today); a git/submodule source would fail later in
+# module_requirements.py; handle it when the first one is listed.
+registry_modules() { # every [[module]] name of registry.toml
+  awk '/^\[/ { inb = ($0 == "[[module]]") } inb && /^name = / { sub(/ *#.*/, ""); gsub(/^name = "|"$/, ""); print }' \
+    "$REPO_ROOT/registry.toml"
+}
+manifest_port() { # <module> input|output -> that port's topic, empty when it has none
+  local f
+  for f in "$REPO_ROOT"/packages/*/*/huri_module.toml \
+           "$REPO_ROOT"/packages/*/*/manifests/*/huri_module.toml; do
+    grep -sqx "name = \"$1\"" "$f" || continue
+    sed -n "s/^$2 = { topic = \"\([^\"]*\)\".*/\1/p" "$f"
+    return
+  done
 }
 
 # --- ROCm helpers ------------------------------------------------------------
@@ -1151,21 +1208,45 @@ plan() {
     esac
   fi
 
-  if [[ -n "$MODULES_OVERRIDE" ]]; then
-    local known="vad stt tag emo eag qag rag tts mov" m bad=()
-    local -a wanted=()
-    IFS=',' read -r -a wanted <<<"$MODULES_OVERRIDE"
-    for m in "${wanted[@]}"; do
+  local -a enabled=()
+  local enabled_text
+  enabled_text="$(enabled_modules)" || exit 1  # die inside $() only ends the subshell
+  [[ -n "$enabled_text" ]] && mapfile -t enabled <<<"$enabled_text"
+  P_UNLISTED=""
+  if [[ -n "$MODULES_OVERRIDE" || ${#enabled[@]} -gt 0 ]]; then
+    local known m bad=() src="--modules"
+    known="$(registry_modules | tr '\n' ' ')"
+    known="${known% }"
+    local -a asked=() wanted=()
+    IFS=',' read -r -a asked <<<"${MODULES_OVERRIDE:-$P_MODULES}"
+    for m in "${asked[@]}"; do
       m="${m// /}"
       [[ -z "$m" ]] && continue
       [[ " $known " == *" $m "* ]] || bad+=("$m")
     done
     (( ${#bad[@]} )) && die "--modules lists unknown module(s): ${bad[*]}. Known: $known"
-    P_MODULES="$(IFS=,; echo "${wanted[*]// /}")"
-    P_MODULES="$(echo "$P_MODULES" | tr -s ',' | sed 's/^,//; s/,$//')"
+    [[ ",${MODULES_OVERRIDE// /}," == *",tts_cosyvoice,"* ]] &&
+      die "--modules: tts_cosyvoice is not listed by name, use tts with --tts-engine cosyvoice"
+    mapfile -t enabled < <(printf '%s\n' "${enabled[@]}" | awk 'NF && !seen[$0]++')
+    for m in "${enabled[@]}"; do
+      [[ "$m" == tts_cosyvoice ]] &&
+        die "$ENABLED_FILE: tts_cosyvoice is not listed by name, use tts with --tts-engine cosyvoice"
+      [[ " $known " == *" $m "* ]] || P_UNLISTED="${P_UNLISTED:+$P_UNLISTED,}$m"
+    done
+    [[ ${#enabled[@]} -gt 0 ]] && src="$ENABLED_FILE"
+    [[ ${#enabled[@]} -gt 0 && -n "$MODULES_OVERRIDE" ]] && src="--modules and $ENABLED_FILE"
+    # dedupe in order: --modules (or the planned set) first, then the enabled ones
+    mapfile -t wanted < <(printf '%s\n' "${asked[@]// /}" "${enabled[@]}" | awk 'NF && !seen[$0]++')
+    P_MODULES="$(IFS=,; echo "${wanted[*]}")"
+    [[ -n "$P_UNLISTED" ]] &&
+      note "$P_UNLISTED not in registry.toml: kept in HURI_MODULES, not checked"
     local problems
     problems="$(module_set_problems "$P_MODULES")"
-    [[ -n "$problems" ]] && die "--modules $P_MODULES cannot answer:
+    for m in "${enabled[@]}"; do
+      [[ "$problems" == *"  $m needs"* ]] &&
+        problems+=$'\n'"  ($m comes from $ENABLED_FILE)"
+    done
+    [[ -n "$problems" ]] && die "$src $P_MODULES cannot answer:
 $problems
 e.g. --modules rag (text), vad,stt,tag,qag,rag (voice), add emo,eag for the
 emotion and tts (then mov) to hear the answer"
@@ -1175,7 +1256,9 @@ emotion and tts (then mov) to hear the answer"
       local name="${m%%:*}" dev flag="${m##*:}" why
       m="${m#*:}"; dev="P_${m%%:*}_DEV"; why="P_${m%%:*}_WHY"
       if [[ ",$P_MODULES," == *",$name,"* && "${!dev}" == "off" ]]; then
-        die "--modules lists $name, but the plan turned it off on this machine (${!why}): add --force-$flag to keep it"
+        local hint=""
+        [[ "$src" == *modules.enabled* ]] && hint=", or huri hub disable $name"
+        die "$src lists $name, but the plan turned it off on this machine (${!why}): add --force-$flag to keep it$hint"
       fi
     done
     # Keep the device plan consistent with the explicit list, so the budgets and
@@ -1606,7 +1689,7 @@ install_python_deps() {
   [[ "$GPU_VENDOR" == "nvidia" || "$GPU_VENDOR" == "amd" ]] && variant="$GPU_VENDOR"
   local modules_req="$STATE_DIR/requirements-modules.generated.txt" merged
   if ! merged="$("$PY_BIN" "$REPO_ROOT/scripts/module_requirements.py" \
-                  --variant "$variant" --modules "$(served_modules)" 2>&1)"; then
+                  --variant "$variant" --modules "$(served_modules_listed)" 2>&1)"; then
     err "the planned modules cannot be installed together on this $variant host:"
     local line
     while IFS= read -r line; do note "$line"; done <<<"$merged"
@@ -1742,7 +1825,7 @@ install_python_deps() {
   # 7. The planned modules' own requirements for this hardware (merged above).
   #    Mostly satisfied by the steps before; what it adds is that the module
   #    packages are the reference for their dependencies.
-  info "  module requirements ($variant: $(served_modules))"
+  info "  module requirements ($variant: $(served_modules_listed))"
   local idx=()
   [[ "$variant" == "nvidia" ]] \
     && idx=(--extra-index-url "$TORCH_CUDA_INDEX" --extra-index-url https://pypi.ngc.nvidia.com)

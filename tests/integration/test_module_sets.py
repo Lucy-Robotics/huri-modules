@@ -22,6 +22,7 @@ import pytest
 import yaml
 
 from huri_core.core.huri import HuRI
+from huri_core.core.manifest import load_manifest
 from huri_core.core.plugins import load_events, load_modules
 from huri_core.testing import LocalHandle
 from tests.integration.fakes import (
@@ -96,6 +97,48 @@ def test_a_refused_set_names_what_it_misses():
     out = installer('module_set_problems "vad,stt,emo,eag,qag,rag"\n')
     assert out.split("\n")[:2] == ["  stt needs tag", "  qag needs tag"]
     assert "rag" in installer('module_set_problems ""\n')
+
+
+def hub(sets):
+    return installer(
+        f"for s in {' '.join(sets)}; do\n"
+        '  p="$(module_set_problems "$s")"; echo "$s: $p"\n'
+        "done\n",
+        REPO_ROOT=str(ROOT),
+    )
+
+
+def test_hub_modules_are_accepted_when_something_feeds_them():
+    out = hub(
+        ["rag,think", "vad,stt,tag,qag,rag,think", "vad,stt,tag,qag,rag,tts,lips"]
+    )
+    assert [line.endswith(": ") for line in out.splitlines()] == [True] * 3
+
+
+def test_a_hub_module_nothing_feeds_is_refused():
+    out = hub(["think", "vad,stt,tag,qag,rag,lips"])
+    assert "think needs huri.question" in out
+    assert "lips needs huri.audio.out" in out
+
+
+def test_the_installer_reads_the_ports_huri_core_reads():
+    paths = sorted((ROOT / "packages").glob("*/*/huri_module.toml")) + sorted(
+        (ROOT / "packages").glob("*/*/manifests/*/huri_module.toml")
+    )
+    assert paths
+    manifests = [load_manifest(p) for p in paths]
+    body = "".join(
+        f'echo "{m.name} $(manifest_port {m.name} input)'
+        f' $(manifest_port {m.name} output)"\n'
+        for m in manifests
+    )
+    got = [
+        line.split(" ") for line in installer(body, REPO_ROOT=str(ROOT)).splitlines()
+    ]
+    want = [
+        [m.name, m.input.topic, m.output.topic if m.output else ""] for m in manifests
+    ]
+    assert got == want
 
 
 # --- the accepted sets, through the server ------------------------------------

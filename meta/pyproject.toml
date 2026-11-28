@@ -40,7 +40,7 @@ lips = ["huri-module-lipsync[lam]==0.1.0"]
 tts-phonemes = ["huri-module-lipsync[piper]==0.1.0"]
 # Not modules: the event vocabulary alone, and `huri hub`.
 events = ["huri-events==0.3.0"]
-hub = ["huri-hub==0.2.1"]
+hub = ["huri-hub==0.2.2"]
 # Every module a pip install completes (all but tts-cosyvoice), and huri hub.
 all = ["huri-modules[vad,stt,tag,emo,eag,emo-react,emo-out,rag,qag,tts,mov,think,think-say,think-token,think-stop,lips,tts-phonemes,hub]"]
 
