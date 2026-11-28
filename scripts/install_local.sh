@@ -1016,7 +1016,11 @@ plan() {
   local cpu_other=$(( RAM_BASE + RAM_STT[$STT_SIZE] + RAM_EMO_PER_SESSION ))
   (( FORCE_TTS ))     && cpu_other=$(( cpu_other + RAM_TTS_CPU ))
   (( FORCE_GESTURE )) && cpu_other=$(( cpu_other + RAM_GESTURE_CPU ))
-  local llm_ram_budget=$(( RAM_TOTAL_MB - cpu_other - 1024 ))   # 1 GiB margin
+  # Free RAM, not total: a busy machine must not get a tier that will OOM. Total
+  # is the fallback where free RAM cannot be read (RAM_FREE_MB=0).
+  local ram_now=$RAM_FREE_MB
+  (( ram_now > 0 )) || ram_now=$RAM_TOTAL_MB
+  local llm_ram_budget=$(( ram_now - cpu_other - 1024 ))   # 1 GiB margin
   (( llm_ram_budget < 0 )) && llm_ram_budget=0
 
   if (( LLM_REMOTE )); then
@@ -1039,7 +1043,7 @@ plan() {
     else
       P_LLM_DEV="cpu"; P_LLM_RAM=$tram
       P_LLM_WHY="user-selected; served from RAM by Ollama"
-      (( tram > llm_ram_budget )) && P_LLM_WHY="user-selected; $(mb_to_gb $tram) GiB needed but only $(mb_to_gb $llm_ram_budget) GiB spare RAM"
+      (( tram > llm_ram_budget )) && P_LLM_WHY="user-selected; $(mb_to_gb $tram) GiB needed but only $(mb_to_gb $llm_ram_budget) GiB left of $(mb_to_gb $ram_now) GiB available RAM"
     fi
   else
     for tier in "${LLM_TIERS[@]}"; do
@@ -1057,10 +1061,17 @@ plan() {
         IFS='|' read -r tag tvram tram <<<"$tier"
         if (( llm_ram_budget >= tram )); then
           LLM_MODEL="$tag"; P_LLM_DEV="cpu"; P_LLM_RAM=$tram
-          P_LLM_WHY="no VRAM headroom; largest tier fitting $(mb_to_gb $llm_ram_budget) GiB spare RAM"
+          P_LLM_WHY="no VRAM headroom; largest tier fitting the $(mb_to_gb $llm_ram_budget) GiB left of $(mb_to_gb $ram_now) GiB available RAM"
           break
         fi
       done
+      # Busy but big enough: keep the smallest tier rather than blocking the
+      # plan; the ram row below warns that free RAM is short.
+      IFS='|' read -r tag tvram tram <<<"${LLM_TIERS[-1]}"
+      if [[ -z "$LLM_MODEL" ]] && (( RAM_TOTAL_MB - cpu_other - 1024 >= tram )); then
+        LLM_MODEL="$tag"; P_LLM_DEV="cpu"; P_LLM_RAM=$tram
+        P_LLM_WHY="no VRAM headroom; smallest tier; $(mb_to_gb $ram_now) GiB available RAM is short"
+      fi
     fi
   fi
   # Embeddings: served by the same local Ollama, or by the remote endpoint.
@@ -1320,8 +1331,23 @@ report_plan() {
   printf '    %-22s %s\n' "modules registered" "$(served_modules)"
   printf '    %-22s %s\n' "client" "$( ((INSTALL_CLI)) \
     && echo "huri-cli ($(cli_source))" || echo "none (--no-cli)")"
-  printf '    %-22s %s GiB needed / %s GiB present\n' "ram" "$(mb_to_gb $P_RAM_NEED)" "$(mb_to_gb $RAM_TOTAL_MB)"
+  # RAM_FREE_MB=0 means the free RAM could not be read: show the total only.
+  if (( RAM_FREE_MB > 0 )); then
+    printf '    %-22s %s GiB needed / %s GiB available (%s GiB total)\n' "ram" \
+      "$(mb_to_gb $P_RAM_NEED)" "$(mb_to_gb $RAM_FREE_MB)" "$(mb_to_gb $RAM_TOTAL_MB)"
+  else
+    printf '    %-22s %s GiB needed / %s GiB total\n' "ram" \
+      "$(mb_to_gb $P_RAM_NEED)" "$(mb_to_gb $RAM_TOTAL_MB)"
+  fi
   printf '    %-22s %s GiB needed / %s GiB free\n' "disk" "$(mb_to_gb $P_DISK_NEED)" "$(mb_to_gb $DISK_FREE_MB)"
+  if (( RAM_FREE_MB > 0 && RAM_FREE_MB < P_RAM_NEED )); then
+    warn "only $(mb_to_gb $RAM_FREE_MB) GiB is free of the $(mb_to_gb $P_RAM_NEED) GiB the plan needs"
+    if [[ "$P_LLM_DEV" == "cpu" && "$LLM_MODEL" != "qwen2.5:1.5b" ]]; then
+      note "close other applications, or pass a smaller --llm-model (e.g. --llm-model qwen2.5:1.5b)"
+    else
+      note "close other applications"
+    fi
+  fi
   if [[ "$GPU_VENDOR" != "none" ]]; then
     printf '    %-22s ray --num-gpus=%s · fractions tts=%s gesture=%s stt=%s\n' \
       "gpu scheduling" "$P_RAY_GPUS" "$P_TTS_FRAC" "$P_GES_FRAC" "$P_STT_FRAC"

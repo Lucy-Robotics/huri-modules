@@ -69,7 +69,7 @@ package manager it recognises (`apt`, `pacman`, `dnf`, `zypper`) and `sudo`.
 | -------- | -------------------------------------------------------------------------------------------------- |
 | Python   | **3.10 – 3.12** (3.12 recommended; 3.13+ is not supported yet — `numpy 1.26` has no wheels for it) |
 | Disk     | ~8 GiB for the default voice pipeline, ~20 GiB with CosyVoice TTS                                  |
-| RAM      | ~16 GiB for the default plan; the installer refuses a plan that will not fit                       |
+| RAM      | ~12.5 GiB free for the default model (less picks a smaller one); refuses a plan that cannot fit    |
 | Network  | github.com (huri-core), huggingface.co (models) and the Ollama/PyPI mirrors                        |
 | Optional | An input device if you want speech in, a GPU for faster STT                                        |
 
