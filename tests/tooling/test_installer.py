@@ -458,3 +458,65 @@ def test_every_package_manager_installs_zstd_for_ollama():
     lists = re.findall(r"SYS_PKGS=\(([^)]+)\)", INSTALLER.read_text())
     assert len(lists) == 4
     assert all("zstd" in packages.split() for packages in lists)
+
+
+def plan_on(tmp_path, total_mb, free_mb, *flags):
+    """The --plan-only output on a faked CPU-only machine with that much RAM."""
+    bin_dir, _ = fake_git(tmp_path)
+    repo = installer_copy(tmp_path)
+    script = repo / "scripts" / "install_local.sh"
+    head, tail = script.read_text().rsplit('main "$@"', 1)
+    assert not tail.strip()
+    fakes = (
+        f"detect_host() {{ CPU_CORES=8; RAM_TOTAL_MB={total_mb}; "
+        f"RAM_FREE_MB={free_mb}; DISK_FREE_MB=500000; }}\n"
+        f'detect_python() {{ PY_BIN="{sys.executable}"; PY_VERSION=3.12.0; }}\n'
+        'detect_tools() { HAS_DOCKER=""; HAS_OLLAMA=0; }\n'
+    )
+    script.write_text(head + fakes + 'main "$@"\n')
+    out = subprocess.run(
+        [str(repo / "install.sh"), "--plan-only", "--profile", "cpu", *flags],
+        cwd=repo,
+        env=env_with(bin_dir),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert out.returncode == 0, out.stdout + out.stderr
+    return out.stdout
+
+
+def test_the_machine_has_the_ram_but_it_is_in_use(tmp_path):
+    out = plan_on(tmp_path, 15360, 3584)
+    assert "ollama mistral:7b" in out
+    assert "only 3.5 GiB is free of the 11.9 GiB the plan needs" in out
+    assert "close other applications" in out and "--llm-model" in out
+
+
+def test_enough_ram_is_free(tmp_path):
+    out = plan_on(tmp_path, 15360, 14336)
+    assert "ollama mistral:7b" in out
+    assert re.search(r"ram\s+11\.9 GiB needed / 14\.0 GiB available", out)
+    assert "is free of" not in out
+
+
+def test_a_user_selected_model_does_not_fit_in_the_free_ram(tmp_path):
+    out = plan_on(tmp_path, 65536, 8192, "--llm-model", "qwen2.5:14b")
+    assert re.search(r"rag/llm\s+ollama qwen2\.5:14b.*user-selected", out)
+    assert "only 8.0 GiB is free of the 16.3 GiB the plan needs" in out
+
+
+def test_a_remote_llm_gets_no_smaller_model_hint(tmp_path):
+    out = plan_on(
+        tmp_path,
+        4096,
+        1024,
+        "--llm-url",
+        "http://example.invalid:11434",
+        "--llm-model",
+        "foo",
+    )
+    assert "is free of" in out
+    note = next(line for line in out.splitlines() if "close other applications" in line)
+    assert "--llm-model" not in note
