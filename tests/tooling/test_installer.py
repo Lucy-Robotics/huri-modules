@@ -487,11 +487,32 @@ def plan_on(tmp_path, total_mb, free_mb, *flags):
     return out.stdout
 
 
-def test_the_machine_has_the_ram_but_it_is_in_use(tmp_path):
-    out = plan_on(tmp_path, 15360, 3584)
+def test_a_busy_machine_gets_the_largest_tier_that_fits_the_free_ram(tmp_path):
+    out = plan_on(tmp_path, 16384, 11264)
+    assert re.search(
+        r"rag/llm\s+ollama llama3\.2:3b.*left of 11\.0 GiB available RAM", out
+    )
+    assert "spare RAM" not in out
+
+
+def test_a_very_busy_machine_keeps_the_smallest_tier_and_warns(tmp_path):
+    out = plan_on(tmp_path, 16384, 6144)
+    assert re.search(
+        r"rag/llm\s+ollama qwen2\.5:1\.5b.*6\.0 GiB available RAM is short", out
+    )
+    assert "is free of" in out
+
+
+def test_the_user_picks_the_model_on_a_busy_machine(tmp_path):
+    out = plan_on(tmp_path, 15360, 3584, "--llm-model", "mistral:7b")
     assert "ollama mistral:7b" in out
     assert "only 3.5 GiB is free of the 11.9 GiB the plan needs" in out
     assert "close other applications" in out and "--llm-model" in out
+
+
+def test_an_unreadable_free_ram_falls_back_to_the_total(tmp_path):
+    out = plan_on(tmp_path, 15360, 0)
+    assert "ollama mistral:7b" in out
 
 
 def test_enough_ram_is_free(tmp_path):
@@ -505,6 +526,7 @@ def test_a_user_selected_model_does_not_fit_in_the_free_ram(tmp_path):
     out = plan_on(tmp_path, 65536, 8192, "--llm-model", "qwen2.5:14b")
     assert re.search(r"rag/llm\s+ollama qwen2\.5:14b.*user-selected", out)
     assert "only 8.0 GiB is free of the 16.3 GiB the plan needs" in out
+    assert "left of 8.0 GiB available RAM" in out
 
 
 def test_a_remote_llm_gets_no_smaller_model_hint(tmp_path):
