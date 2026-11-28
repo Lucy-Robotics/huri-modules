@@ -1320,8 +1320,17 @@ report_plan() {
   printf '    %-22s %s\n' "modules registered" "$(served_modules)"
   printf '    %-22s %s\n' "client" "$( ((INSTALL_CLI)) \
     && echo "huri-cli ($(cli_source))" || echo "none (--no-cli)")"
-  printf '    %-22s %s GiB needed / %s GiB present\n' "ram" "$(mb_to_gb $P_RAM_NEED)" "$(mb_to_gb $RAM_TOTAL_MB)"
+  printf '    %-22s %s GiB needed / %s GiB available (%s GiB total)\n' "ram" \
+    "$(mb_to_gb $P_RAM_NEED)" "$(mb_to_gb $RAM_FREE_MB)" "$(mb_to_gb $RAM_TOTAL_MB)"
   printf '    %-22s %s GiB needed / %s GiB free\n' "disk" "$(mb_to_gb $P_DISK_NEED)" "$(mb_to_gb $DISK_FREE_MB)"
+  if (( RAM_FREE_MB < P_RAM_NEED )); then
+    warn "only $(mb_to_gb $RAM_FREE_MB) GiB is free of the $(mb_to_gb $P_RAM_NEED) GiB the plan needs"
+    if [[ "$P_LLM_DEV" == "cpu" && "$LLM_MODEL" != "qwen2.5:1.5b" ]]; then
+      note "close other applications, or pass a smaller --llm-model (e.g. --llm-model qwen2.5:1.5b)"
+    else
+      note "close other applications"
+    fi
+  fi
   if [[ "$GPU_VENDOR" != "none" ]]; then
     printf '    %-22s ray --num-gpus=%s · fractions tts=%s gesture=%s stt=%s\n' \
       "gpu scheduling" "$P_RAY_GPUS" "$P_TTS_FRAC" "$P_GES_FRAC" "$P_STT_FRAC"

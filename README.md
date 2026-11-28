@@ -108,7 +108,7 @@ works on it. Nothing here is aspirational — these are measured outcomes:
 | **STT** (faster-whisper)                                   | ✅ `int8`, realtime for `base`   | ✅ `float16` | ⚠️ runs on CPU: the ROCm build garbles transcripts |
 | **TTS — piper** (default without an NVIDIA GPU)            | ✅ **~30x faster than realtime** | ✅           | ✅ (runs on CPU; it does not need a GPU)  |
 | **TTS — cosyvoice** (default on NVIDIA with ≥4.4 GiB free) | ⚠️ ~7x _slower_ than realtime    | ✅ `fp16`    | ❌ vocoder faults in a MIOpen convolution |
-| **RAG / LLM** (Ollama)                                     | ✅ tier picked from free RAM     | ✅           | ✅                                        |
+| **RAG / LLM** (Ollama)                                     | ✅ tier picked from total RAM    | ✅           | ✅                                        |
 | **EMO** (prosody)                                          | ✅ always CPU                    | ✅           | ✅                                        |
 | **MOV / gesture** (EMAGE)                                  | ❌ slower than realtime          | ✅           | ❌ not in the ROCm build                  |
 | **THINK** (generated motion, Piper voice) ¹                | ✅ no GPU needed                 | ✅           | ✅                                        |
