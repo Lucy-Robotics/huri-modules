@@ -280,3 +280,54 @@ def test_client_hint_only_points_to_huri_cli_when_installed(
             assert fragment in text
         for fragment in unwanted:
             assert fragment not in text
+
+
+def rerun_hint(tmp_path, *, venv_has_cli, skipped=1, dry_run=0, venv_exists=True):
+    """What the Done block says after a run whose python stage was `skipped`."""
+    venv = tmp_path / "venv"
+    if venv_exists:
+        (venv / "bin").mkdir(parents=True)
+    if venv_has_cli:
+        cli = venv / "bin" / "huri-cli"
+        cli.write_text("#!/bin/sh\n")
+        cli.chmod(0o755)
+    lifted = (
+        f'INSTALL_CLI=1; CLI_UNAVAILABLE=0; DRY_RUN={dry_run}; VENV_DIR="{venv}"\n'
+        f"SKIP_PYTHON={skipped}\nstage_enabled() {{ return 0; }}\n"
+        + section(
+            INSTALLER.read_text(), "client_command() {", "generate_run_scripts() {"
+        )
+        + "probe_cli\nclient_command\n"
+    )
+    return subprocess.run(
+        ["bash", "-c", lifted], capture_output=True, text=True, check=True
+    ).stdout
+
+
+def test_rerun_skipping_python_after_an_install_without_huri_cli(tmp_path):
+    assert "huri-cli not installed" in rerun_hint(tmp_path, venv_has_cli=False)
+
+
+def test_rerun_skipping_python_after_an_install_with_huri_cli(tmp_path):
+    out = rerun_hint(tmp_path, venv_has_cli=True)
+    assert "huri-cli --config config/client_local.generated.yaml" in out
+
+
+def test_rerun_skipping_python_without_a_venv(tmp_path):
+    out = rerun_hint(tmp_path, venv_has_cli=False, venv_exists=False)
+    assert "huri-cli not installed" in out
+
+
+def test_dry_run_skipping_python_keeps_pointing_to_huri_cli(tmp_path):
+    out = rerun_hint(tmp_path, venv_has_cli=False, dry_run=1, venv_exists=False)
+    assert "huri-cli --config" in out
+
+
+def test_dry_run_skipping_python_with_a_venv_without_huri_cli(tmp_path):
+    out = rerun_hint(tmp_path, venv_has_cli=False, dry_run=1)
+    assert "huri-cli not installed" in out
+
+
+def test_python_stage_that_ran_is_not_second_guessed(tmp_path):
+    out = rerun_hint(tmp_path, venv_has_cli=False, skipped=0)
+    assert "huri-cli --config" in out

@@ -2493,6 +2493,17 @@ client_command() {
   fi
 }
 
+# When the python stage did not run (--only config, --skip-python), install_cli
+# did not either: judge by the venv, which is also right for a huri-cli the user
+# added by hand. A dry run without a venv can't tell: the stage would install it.
+probe_cli() {
+  if { ! stage_enabled python || (( SKIP_PYTHON )); } \
+     && { (( ! DRY_RUN )) || [[ -d "$VENV_DIR" ]]; } \
+     && [[ ! -x "$VENV_DIR/bin/huri-cli" ]]; then
+    CLI_UNAVAILABLE=1
+  fi
+}
+
 generate_run_scripts() {
   # Does HuRI own a Qdrant it is able to start? start_qdrant() returns early
   # when something already answers on the port, in which case no huri-qdrant
@@ -3143,6 +3154,7 @@ main() {
 
   install_system_packages
   install_python_deps
+  probe_cli
   download_models
   install_services
   generate_configs
