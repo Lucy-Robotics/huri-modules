@@ -142,3 +142,21 @@ def test_question_says_whether_its_emotion_is_the_previous_message_s():
     wire = {"transcript": {"text": "hi", "end": True}, "emotion": None}
     assert RAGQuestion.from_wire(wire) == RAGQuestion(Transcript("hi", True))
     assert RAGQuestion.from_wire(wire).emotion_earlier is False
+
+
+def test_voice_frame_goes_on_the_wire_as_json():
+    frame = np.array([0.5, -0.25, 0.0, 1.0], np.float32)
+    wire = Voice(frame).to_wire()
+    assert json.loads(json.dumps(wire)) == {"data": [0.5, -0.25, 0.0, 1.0]}
+
+
+def test_voice_end_marker_goes_on_the_wire_as_null():
+    assert json.dumps(Voice(None).to_wire()) == '{"data": null}'
+    assert roundtrip(Voice(None)) == Voice(None)
+
+
+def test_voice_comes_back_from_the_wire_as_float32():
+    frame = np.array([0.1, 0.2], np.float32)
+    back = Voice.from_wire(json.loads(json.dumps(Voice(frame).to_wire())))
+    assert back.data.dtype == np.float32
+    np.testing.assert_array_equal(back.data, frame)
