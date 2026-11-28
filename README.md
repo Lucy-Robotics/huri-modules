@@ -110,15 +110,17 @@ works on it. Nothing here is aspirational — these are measured outcomes:
 | **TTS — cosyvoice** (default on NVIDIA with ≥4.4 GiB free) | ⚠️ ~7x _slower_ than realtime    | ✅ `fp16`    | ❌ vocoder faults in a MIOpen convolution |
 | **RAG / LLM** (Ollama)                                     | ✅ tier picked from free RAM     | ✅           | ✅                                        |
 | **EMO** (prosody)                                          | ✅ always CPU                    | ✅           | ✅                                        |
-| **MOV / gesture** (EMAGE)                                  | ❌ slower than realtime          | ✅           | ❌ not in the ROCm build                  |
+| **MOV / gesture** (EMAGE)                                  | ❌ slower than realtime          | ✅           | ✅ with ROCm, 0.07 s/3 s speech ²         |
 | **THINK** (generated motion, Piper voice) ¹                | ✅ no GPU needed                 | ✅           | ✅                                        |
 | **LIPS** (LAM Audio2Expression) ¹                          | ✅ ONNX int8, ~10x realtime      | ⚠️ not tested yet | ✅ torch, ~23x realtime              |
 
 ¹ Not planned by the installer yet: see [The curated modules](#the-curated-modules).
 
+² Measured on an RX 7700S in HuRI-Playground, not by this repo's benchmarks.
+
 So **a machine with no GPU at all still gets voice in and voice out** — that is
-the point of Piper being the default. A GPU buys faster STT, and on NVIDIA it
-additionally unlocks CosyVoice and gesture generation.
+the point of Piper being the default. A GPU buys faster STT and gesture generation (on AMD
+with the ROCm runtime), and on NVIDIA it additionally unlocks CosyVoice.
 
 ## Choosing what to run
 
