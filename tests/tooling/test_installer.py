@@ -513,6 +513,8 @@ def test_the_user_picks_the_model_on_a_busy_machine(tmp_path):
 def test_an_unreadable_free_ram_falls_back_to_the_total(tmp_path):
     out = plan_on(tmp_path, 15360, 0)
     assert "ollama mistral:7b" in out
+    assert re.search(r"ram\s+11\.9 GiB needed / 15\.0 GiB total", out)
+    assert "is free of" not in out
 
 
 def test_enough_ram_is_free(tmp_path):
