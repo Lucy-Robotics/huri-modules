@@ -164,11 +164,11 @@ def test_events_namespace_must_belong_to_the_listed_package(check):
 SERVO = (
     "\n[[module]]\n"
     'name = "servo"\n'
-    'package = "huri-module-servo"\n'
+    'package = "servo"\n'
     'summary = "Gesture to servo angle arrays"\n'
     'huri_core = ">=0.4,<0.5"\n'
     "verified = 2026-10-12\n"
-    'source = { git = "https://github.com/acme/huri-module-servo", tag = "0.1.0", '
+    'source = { git = "https://github.com/acme/servo", tag = "0.1.0", '
     'submodule = "modules/servo" }\n'
 )
 
@@ -306,7 +306,7 @@ def test_an_unreadable_repository_is_a_problem(servo_checkout, monkeypatch, tmp_
 
 def test_install_dirs_follow_the_registry(servo_checkout, tmp_path, monkeypatch):
     registry = tmp_path / "registry.toml"
-    servo = SERVO.replace("https://github.com/acme/huri-module-servo", UPSTREAM)
+    servo = SERVO.replace("https://github.com/acme/servo", UPSTREAM)
     registry.write_text(REGISTRY.read_text() + servo)
     checkout = servo_checkout / "modules" / "servo"
     assert checker.install_dirs(registry, servo_checkout) == [checkout]

@@ -21,7 +21,7 @@ key of the registry is a change here, released with huri-hub.
     verified = 2026-10-12
     source = { path = "packages/huri-module-stt" }    # curated, in huri-modules
     # or a verified third-party module, pinned as a submodule of huri-modules:
-    # source = { git = "https://github.com/acme/huri-module-servo",
+    # source = { git = "https://github.com/acme/servo",
     #            tag = "0.1.0", submodule = "modules/servo" }
     #            (optional: subdirectory = "<dir in that repository>")
     extra = "cosyvoice"   # optional: the extra of `package` the module needs,

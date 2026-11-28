@@ -74,15 +74,15 @@ def isolated(monkeypatch, tmp_path):
 
 SERVO_PYPROJECT = """
 [project]
-name = "huri-module-servo"
+name = "servo"
 [project.entry-points."huri.modules"]
-servo = "huri_servo.module:Servo"
+servo = "servo.module:Servo"
 """
 SERVO_MANIFEST = """
 name = "servo"
 summary = "Gesture to servo angle arrays"
 input = { topic = "huri.motion", event = "huri_events.motion:Motion" }
-output = { topic = "acme.servo_angles", event = "huri_events_servo:ServoAngles" }
+output = { topic = "acme.servo_angles", event = "servo_events:ServoAngles" }
 requires = { actuation = true }
 huri_core = ">=0.4,<0.5"
 """
@@ -99,15 +99,15 @@ def raw(repo, path):
 SEARCH = {
     "items": [
         {
-            "full_name": "acme/huri-module-servo",
+            "full_name": "acme/servo",
             "description": "servos",
-            "html_url": "https://github.com/acme/huri-module-servo",
+            "html_url": "https://github.com/acme/servo",
             "default_branch": "main",
         },
         {
-            "full_name": "bob/huri-module-oldie",
+            "full_name": "bob/oldie",
             "description": "old",
-            "html_url": "https://github.com/bob/huri-module-oldie",
+            "html_url": "https://github.com/bob/oldie",
             "default_branch": "main",
         },
         {
@@ -119,10 +119,10 @@ SEARCH = {
     ]
 }
 WEB = {
-    raw("acme/huri-module-servo", "pyproject.toml"): SERVO_PYPROJECT,
-    raw("acme/huri-module-servo", "huri_servo/huri_module.toml"): SERVO_MANIFEST,
-    raw("bob/huri-module-oldie", "pyproject.toml"): OLD_PYPROJECT,
-    raw("bob/huri-module-oldie", "huri_oldie/huri_module.toml"): OLD_MANIFEST,
+    raw("acme/servo", "pyproject.toml"): SERVO_PYPROJECT,
+    raw("acme/servo", "servo/huri_module.toml"): SERVO_MANIFEST,
+    raw("bob/oldie", "pyproject.toml"): OLD_PYPROJECT,
+    raw("bob/oldie", "oldie/huri_module.toml"): OLD_MANIFEST,
 }
 
 
@@ -147,7 +147,7 @@ def pip_targets(out):
 
 def test_search_lists_tagged_repositories(capsys):
     code, out = run(["search", "servo"], capsys)
-    assert code == 0 and "acme/huri-module-servo" in out and "3 repositories" in out
+    assert code == 0 and "acme/servo" in out and "3 repositories" in out
 
 
 def test_list_merges_verified_and_community_for_the_core_version(capsys, registry):
@@ -245,7 +245,7 @@ def test_a_community_module_is_only_installed_on_request(capsys, registry):
     argv = ["install", "servo", "--dry-run", "--community", "--registry", registry]
     code, out = run(argv, capsys)
     assert code == 0 and "community (not reviewed)" in out
-    assert "pip install git+https://github.com/acme/huri-module-servo.git" in out
+    assert "pip install git+https://github.com/acme/servo.git" in out
 
 
 def test_install_by_url_and_unknown_name(capsys, registry):
@@ -415,13 +415,11 @@ def test_a_malformed_registry_is_a_readable_error(capsys, tmp_path):
 
 
 def test_a_name_claimed_by_several_repositories_is_refused(capsys, registry):
-    twin = dict(SEARCH["items"][0], full_name="mallory/huri-module-servo")
-    twin["html_url"] = "https://github.com/mallory/huri-module-servo"
+    twin = dict(SEARCH["items"][0], full_name="mallory/servo")
+    twin["html_url"] = "https://github.com/mallory/servo"
     pages = dict(WEB)
-    pages[raw("mallory/huri-module-servo", "pyproject.toml")] = SERVO_PYPROJECT
-    pages[raw("mallory/huri-module-servo", "huri_servo/huri_module.toml")] = (
-        SERVO_MANIFEST
-    )
+    pages[raw("mallory/servo", "pyproject.toml")] = SERVO_PYPROJECT
+    pages[raw("mallory/servo", "servo/huri_module.toml")] = SERVO_MANIFEST
 
     def two_claimants(url):
         if url.startswith(f"{web.GITHUB_API}/search/repositories"):
@@ -432,7 +430,7 @@ def test_a_name_claimed_by_several_repositories_is_refused(capsys, registry):
     assert cli.main(argv, fetch=two_claimants) == 1
     err = capsys.readouterr().err
     assert "2 community repositories provide 'servo'" in err
-    assert "acme/huri-module-servo" in err and "mallory/huri-module-servo" in err
+    assert "acme/servo" in err and "mallory/servo" in err
 
 
 def test_an_invalid_core_version_is_a_readable_error(capsys, registry):
@@ -463,12 +461,12 @@ extra = "piper"
 
 [[module]]
 name = "servo"
-package = "huri-module-servo"
+package = "servo"
 huri_core = ">=0.4,<0.5"
 verified = 2026-10-12
 extra = "gpio"
 [module.source]
-git = "https://github.com/acme/huri-module-servo"
+git = "https://github.com/acme/servo"
 tag = "0.1.0"
 submodule = "modules/servo"
 """
@@ -561,7 +559,7 @@ def test_an_extra_names_the_package_in_a_url_target(monkeypatch):
         f"huri-module-tts[piper] @ {repo}#subdirectory=packages/huri-module-tts"
     )
     assert modules["servo"].install == (
-        "huri-module-servo[gpio] @ git+https://github.com/acme/huri-module-servo@0.1.0"
+        "servo[gpio] @ git+https://github.com/acme/servo@0.1.0"
     )
     assert modules["stt"].extra is None
 
