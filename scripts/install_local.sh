@@ -1083,17 +1083,15 @@ plan() {
   fi
 
   # --- Gesture (EMAGE) -------------------------------------------------------
-  if [[ "$GPU_VENDOR" == "nvidia" ]] && (( pool >= VRAM_GESTURE )); then
+  if [[ "$GPU_VENDOR" != "none" ]] && (( pool >= VRAM_GESTURE )); then
     P_GES_DEV="gpu"; P_GES_VRAM=$VRAM_GESTURE; pool=$(( pool - VRAM_GESTURE ))
-    P_GES_WHY="shares the GPU with TTS (memory fraction capped at runtime)"
+    P_GES_WHY="on the GPU (memory fraction capped at runtime)"
   elif (( FORCE_GESTURE )); then
     P_GES_DEV="cpu"; P_GES_WHY="forced onto CPU — motion will lag the audio"
   else
     P_GES_DEV="off"
-    if [[ "$GPU_VENDOR" == "nvidia" ]]; then
+    if [[ "$GPU_VENDOR" != "none" ]]; then
       P_GES_WHY="needs $(mb_to_gb $VRAM_GESTURE) GiB VRAM, only $(mb_to_gb $pool) GiB left"
-    elif [[ "$GPU_VENDOR" == "amd" ]]; then
-      P_GES_WHY="EMAGE is not part of the ROCm build (--force-gesture runs it on CPU)"
     else
       P_GES_WHY="no GPU; CPU inference is slower than realtime (--force-gesture to try)"
     fi
@@ -1593,6 +1591,10 @@ install_python_deps() {
     P_STT_DEV="cpu"; P_STT_FRAC=0; P_STT_WHY="ROCm userspace missing; int8 on CPU"
     P_RAY_GPUS=0
     [[ "$P_EMO_DEV" != "off" ]] && P_EMO_DEV="cpu"
+    if [[ "$P_GES_DEV" == "gpu" ]]; then
+      P_GES_DEV="cpu"; P_GES_FRAC=0
+      P_GES_WHY="ROCm userspace missing; on CPU, motion will lag the audio"
+    fi
   fi
 
   # What each planned module declares for this host's hardware — decided

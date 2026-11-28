@@ -2,7 +2,8 @@
 # and the ROCm torch/torchaudio wheels installed directly in Dockerfile.amd).
 #
 # Hosts: STT (faster-whisper, already in serve_requirements.txt) and RAG/LLM.
-# Does NOT include CosyVoice2 or EMAGE — those run on the NVIDIA worker.
+# Does NOT include CosyVoice2 (its vocoder crashes on ROCm; NVIDIA worker only).
+# EMAGE's AMD pins live in packages/huri-module-mov/requirements-amd.txt.
 
 # --- RAG / LLM ---
 # httpx + qdrant-client moved to serve_requirements.txt so the head/base

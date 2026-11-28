@@ -458,3 +458,81 @@ def test_every_package_manager_installs_zstd_for_ollama():
     lists = re.findall(r"SYS_PKGS=\(([^)]+)\)", INSTALLER.read_text())
     assert len(lists) == 4
     assert all("zstd" in packages.split() for packages in lists)
+
+
+def plan_on_amd(tmp_path, vram_mb, rocm=True):
+    """The --plan-only run on a faked AMD machine; returns (stdout+stderr, repo)."""
+    bin_dir, _ = fake_git(tmp_path)
+    repo = installer_copy(tmp_path)
+    script = repo / "scripts" / "install_local.sh"
+    head, tail = script.read_text().rsplit('main "$@"', 1)
+    assert not tail.strip()
+    fakes = (
+        "detect_os() { OS_NAME=fedora; OS_VERSION=42; PKG_MGR=dnf; IS_WSL=0; }\n"
+        "detect_host() { CPU_CORES=8; RAM_TOTAL_MB=32768; RAM_FREE_MB=30000; "
+        "DISK_FREE_MB=500000; }\n"
+        f'detect_python() {{ PY_BIN="{sys.executable}"; PY_VERSION=3.12.0; }}\n'
+        'detect_tools() { HAS_DOCKER=""; HAS_OLLAMA=0; }\n'
+        'detect_amd() { GPU_VENDOR=amd; GPU_NAME="AMD Radeon RX 7700S"; '
+        f"GPU_COUNT=1; GPU_VRAM_MB={vram_mb}; }}\n"
+        f"rocm_have_runtime() {{ return {0 if rocm else 1}; }}\n"
+    )
+    script.write_text(head + fakes + 'main "$@"\n')
+    out = subprocess.run(
+        [str(repo / "install.sh"), "--plan-only", "--profile", "amd"],
+        cwd=repo,
+        env=env_with(bin_dir),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert out.returncode == 0, out.stdout + out.stderr
+    return out.stdout + out.stderr, repo
+
+
+def plan_env(repo):
+    lines = (repo / ".huri-local" / "plan.env").read_text().splitlines()
+    return dict(line.split("=", 1) for line in lines if "=" in line)
+
+
+def test_an_amd_gpu_with_the_rocm_runtime_and_enough_vram(tmp_path):
+    out, repo = plan_on_amd(tmp_path, 8176)
+    assert re.search(r"mov\s+EMAGE audio\s+gpu\s+2\.1 GiB vram", out), out
+    env = plan_env(repo)
+    assert env["HURI_PROFILE"] == "amd", env
+    assert env["HURI_GESTURE_DEVICE"] == "gpu", env
+    modules = env["HURI_MODULES"].strip("\"'")
+    assert "mov" in modules.replace(",", " ").split(), env
+    reqs = subprocess.run(
+        [
+            sys.executable,
+            "scripts/module_requirements.py",
+            "--variant",
+            "amd",
+            "--modules",
+            modules,
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert reqs.returncode == 0, reqs.stdout + reqs.stderr
+    assert "huri-module-mov (amd)" in reqs.stdout + reqs.stderr
+
+
+def test_an_amd_gpu_without_enough_vram_left(tmp_path):
+    out, repo = plan_on_amd(tmp_path, 2560)
+    assert re.search(
+        r"mov\s+EMAGE audio\s+off.*needs 2\.1 GiB VRAM, only 1\.8 GiB left", out
+    ), out
+    assert plan_env(repo)["HURI_GESTURE_DEVICE"] == "off"
+
+
+def test_an_amd_gpu_without_the_rocm_runtime(tmp_path):
+    out, repo = plan_on_amd(tmp_path, 8176, rocm=False)
+    assert re.search(r"mov\s+EMAGE audio\s+off", out), out
+    assert "the ROCm 7.2 runtime is missing" in out, out
+    assert "install the runtime" in out, out
+    assert plan_env(repo)["HURI_GESTURE_DEVICE"] == "off"
