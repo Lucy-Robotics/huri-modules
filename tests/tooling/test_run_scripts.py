@@ -78,6 +78,7 @@ def generate(tmp_path, **settings):
         "CPU_CORES": 4,
         "P_RAY_GPUS": 1,
         "INSTALL_CLI": 1,
+        "CLI_UNAVAILABLE": 0,
         **settings,
     }
     script = tmp_path / "generate.sh"
@@ -226,3 +227,56 @@ def test_stop_leaves_ray_running_when_start_could_not_record_the_session(
     assert_left_running(log, out)
     assert "could not record" in out.stdout
     assert not (state / "ray.owned").exists()
+
+
+CLI_HINTS = [
+    pytest.param(
+        1,
+        1,
+        ["config/client_local.generated.yaml", "huri-cli not installed"],
+        ["huri-cli --config"],
+        id="No huri-cli release supports the installed core",
+    ),
+    pytest.param(
+        1,
+        0,
+        ["huri-cli --config config/client_local.generated.yaml"],
+        [],
+        id="huri-cli was installed",
+    ),
+    pytest.param(
+        0,
+        0,
+        ["huri-cli skipped: --no-cli"],
+        ["huri-cli --config"],
+        id="--no-cli",
+    ),
+]
+
+
+@pytest.mark.parametrize("install_cli, unavailable, wanted, unwanted", CLI_HINTS)
+def test_client_hint_only_points_to_huri_cli_when_installed(
+    tmp_path, fakes, install_cli, unavailable, wanted, unwanted
+):
+    fake, log, env = fakes
+    state = generate(tmp_path, INSTALL_CLI=install_cli, CLI_UNAVAILABLE=unavailable)
+    start = (state / "start.sh").read_text()
+    shown = run(state / "start.sh", env).stdout
+
+    # The Done block calls client_command() alone.
+    lifted = (
+        f"INSTALL_CLI={install_cli}; CLI_UNAVAILABLE={unavailable}\n"
+        + section(
+            INSTALLER.read_text(), "client_command() {", "generate_run_scripts() {"
+        )
+        + "client_command\n"
+    )
+    done = subprocess.run(
+        ["bash", "-c", lifted], capture_output=True, text=True, check=True
+    ).stdout
+
+    for text in (start, shown, done):
+        for fragment in wanted:
+            assert fragment in text
+        for fragment in unwanted:
+            assert fragment not in text

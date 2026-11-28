@@ -83,7 +83,7 @@ HURI_CORE_REF="${HURI_CORE_REF:-$(versions_get HURI_CORE_REF)}"
 HURI_CORE_PATH="${HURI_CORE_PATH:-}"
 # huri-cli: the reference client, installed unless --no-cli.
 HURI_CLI_PATH="${HURI_CLI_PATH:-}"
-# Set when no huri-cli release supports the installed core: verify warns.
+# Set when huri-cli could not be installed: verify warns, the client hint changes.
 CLI_UNAVAILABLE=0
 # The commit HURI_CORE_REF names, resolved by resolve_refs when installing
 # (never by --plan-only or --dry-run, which make no network call).
@@ -2481,13 +2481,15 @@ EOF
   fi
 }
 
-# How to talk to the server once it is up: huri-cli, or with --no-cli whatever
-# client the user brings, with the generated session.
+# How to talk to the server once it is up: huri-cli only when it got installed
+# (not --no-cli, not CLI_UNAVAILABLE); otherwise whatever client the user brings.
 client_command() {
-  if (( INSTALL_CLI )); then
-    echo "huri-cli --config config/client_local.generated.yaml"
-  else
+  if (( ! INSTALL_CLI )); then
     echo "<your client> with config/client_local.generated.yaml (huri-cli skipped: --no-cli)"
+  elif (( CLI_UNAVAILABLE )); then
+    echo "<your client> with config/client_local.generated.yaml (huri-cli not installed: no release fits this huri-core, or PyPI is unreachable; see .huri-local/install.log)"
+  else
+    echo "huri-cli --config config/client_local.generated.yaml"
   fi
 }
 
