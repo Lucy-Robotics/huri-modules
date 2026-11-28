@@ -14,9 +14,9 @@
 | huri.motion             | Motion            | binary |
 | huri.lips.face          | FaceWeights       | binary |
 
-`Voice` only travels between modules inside the server. `Emotion` does too
-(EMO -> EAG), and a client may subscribe to it to show what the server senses
-while the user speaks.
+`Voice` and `Emotion` travel between modules (VAD -> STT, EMO; EMO -> EAG), and
+a client may subscribe to either: `huri.voice` to see that the server hears
+speech, `huri.emotion` to show what it senses.
 """
 
 from huri_events.audio import Audio

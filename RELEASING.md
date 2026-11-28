@@ -25,7 +25,8 @@ follows these rules:
 - `huri-events`: a change to a wire format, a topic or an event class's
   public fields is a **minor** bump while it is `0.x` (`0.1` → `0.2`), since
   modules and clients pin `huri-events>=0.3,<0.4`; adding a topic is a minor
-  bump too; a fix that keeps the wire format is a patch.
+  bump too; a fix that keeps the wire format is a patch, and so is giving a
+  wire to an event that could never be sent before (no client could read it).
 - a module: a change to its topics, events, manifest or `user_config` keys is
   a minor bump while `0.x`; anything else that changes behaviour is a patch.
 - `huri-hub` (`huri hub`) is versioned like the others, and holds the one
