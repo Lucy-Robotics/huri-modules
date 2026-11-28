@@ -149,7 +149,13 @@ are added to `HURI_MODULES`, with or without `--modules`. That is how a module
 you develop is served locally: `huri hub install ./servo --editable --enable`
 (see [Finding modules](#finding-modules-huri-hub)). Run it in the server's
 environment (a shell that sourced `.huri-local/env.sh`): it installs into the
-Python that runs it.
+Python that runs it. The generated client config names every served module:
+a hub module with its default arguments, subscribed to its output when huri-cli
+shows it (`huri.motion`, `huri.audio.out`, ...). Left as a comment to add by
+hand: a name not in `registry.toml`, `tts_phonemes` next to `tts` (it replaces
+it), `think_say` without the Piper `tts` whose voice it borrows, and a module
+fed only by one of those (`think_stop` or `lips` on `think_say`'s voice). A module
+enabled after the install reaches that client config at the next `./install.sh`.
 
 `./install.sh --help` lists every flag.
 

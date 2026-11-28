@@ -16,6 +16,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = ROOT / "scripts" / "install_local.sh"
@@ -594,3 +595,111 @@ def test_an_unlisted_enabled_module_is_not_given_to_module_requirements(tmp_path
         stdin=subprocess.DEVNULL,
     )
     assert out.stdout.strip() == "rag", out.stdout + out.stderr
+
+
+def client_config_for(tmp_path, modules, unlisted="", engine="piper"):
+    """The client YAML client_config writes for a plan of `modules`, as text."""
+    head = INSTALLER.read_text().rsplit('main "$@"', 1)[0]
+    script = installer_copy(tmp_path) / "scripts" / "install_local.sh"
+    script.write_text(
+        head
+        + f'P_MODULES="{modules}" P_UNLISTED="{unlisted}" TTS_ENGINE="{engine}"\n'
+        + "client_config\n"
+    )
+    out = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        stdin=subprocess.DEVNULL,
+    )
+    assert out.returncode == 0, out.stdout + out.stderr
+    return out.stdout
+
+
+def test_the_curated_client_config_is_unchanged(tmp_path):
+    raw = yaml.safe_load(client_config_for(tmp_path, "vad,stt,tag,qag,rag,tts"))
+    assert list(raw["modules"]) == ["vad", "stt", "tag", "qag", "rag", "tts"]
+    assert raw["send"] == ["huri.audio.in", "huri.question"]
+    assert raw["subscribe"] == ["huri.question", "huri.token", "huri.audio.out"]
+
+
+def test_a_hub_module_of_the_plan_is_in_the_client_config(tmp_path):
+    think = "think,think_say,think_token,think_stop"
+    raw = yaml.safe_load(
+        client_config_for(tmp_path, f"vad,stt,tag,qag,rag,tts,{think}")
+    )
+    assert list(raw["modules"])[6:] == think.split(",")
+    assert all(raw["modules"][m] == {"name": m} for m in think.split(","))
+    assert raw["send"] == ["huri.audio.in", "huri.question"]
+    # think's huri.motion is shown, think_say's huri.audio.out already is.
+    assert raw["subscribe"] == [
+        "huri.question",
+        "huri.token",
+        "huri.audio.out",
+        "huri.motion",
+    ]
+
+
+def test_a_hub_module_output_huri_cli_cannot_show_is_not_subscribed(tmp_path):
+    # huri-cli refuses a subscribe topic it has no receiver for.
+    raw = yaml.safe_load(client_config_for(tmp_path, "rag,tts,lips"))
+    assert list(raw["modules"]) == ["rag", "tts", "lips"]
+    assert raw["subscribe"] == ["huri.token", "huri.audio.out"]
+
+
+def test_a_module_in_no_registry_is_left_out_of_the_client_config(tmp_path):
+    text = client_config_for(tmp_path, "rag,servo", unlisted="servo")
+    raw = yaml.safe_load(text)
+    assert list(raw["modules"]) == ["rag"]
+    assert raw["subscribe"] == ["huri.token"]
+    assert "# servo: not in registry.toml, add it by hand" in text
+
+
+def test_tts_phonemes_next_to_tts_is_left_for_the_operator(tmp_path):
+    # Wired instead of tts: both would speak every answer.
+    text = client_config_for(tmp_path, "vad,stt,tag,qag,rag,tts,tts_phonemes")
+    assert list(yaml.safe_load(text)["modules"])[-1] == "tts"
+    assert "# tts_phonemes: replaces tts, swap it for tts by hand" in text
+
+
+def test_tts_phonemes_without_tts_is_the_voice(tmp_path):
+    raw = yaml.safe_load(client_config_for(tmp_path, "rag,tts_phonemes,lips"))
+    assert list(raw["modules"]) == ["rag", "tts_phonemes", "lips"]
+    assert raw["subscribe"] == ["huri.token", "huri.audio.out"]
+    assert "audio_out" in raw["cli"]
+
+
+@pytest.mark.parametrize(
+    "modules, engine",
+    [("rag,think_say,think_token", "piper"), ("rag,tts,think_say", "cosyvoice")],
+    ids=["no-tts", "cosyvoice"],
+)
+def test_think_say_without_a_piper_voice_is_left_out(tmp_path, modules, engine):
+    # ThinkSay raises at session start without one: the server would refuse
+    # every session. The installer sets HURI_PIPER_VOICE for a Piper tts only.
+    text = client_config_for(tmp_path, modules, engine=engine)
+    assert "think_say" not in yaml.safe_load(text)["modules"]
+    assert "# think_say: needs a Piper voice" in text
+
+
+@pytest.mark.parametrize(
+    "modules, kept, out",
+    [
+        (
+            "rag,think,think_say,think_token,think_stop",
+            ["think", "think_token"],
+            "think_stop",
+        ),
+        ("rag,think_say,lips", [], "lips"),
+    ],
+    ids=["think_stop", "lips"],
+)
+def test_a_module_fed_only_by_one_left_out_is_left_out(tmp_path, modules, kept, out):
+    # check_session refuses a session where nothing produces a module's input.
+    text = client_config_for(tmp_path, modules)
+    raw = yaml.safe_load(text)
+    assert list(raw["modules"]) == ["rag", *kept]
+    assert (
+        f"# {out}: its input huri.audio.out only comes from a module left out" in text
+    )

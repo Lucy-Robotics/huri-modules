@@ -59,7 +59,8 @@ checkout whose `.venv` runs the command. `huri hub disable <name>` undoes
 `tts_cosyvoice`: that is `tts` with `./install.sh --tts-engine cosyvoice`).
 `HURI_MODULES` in `.huri-local/plan.env` is the installer's record of its plan,
 informational: `enable` and `disable` leave it as it is. A session uses a
-module only when its client config names it: `enable` prints the snippet to add.
+module only when its client config names it: `enable` prints the snippet to add,
+and the next `./install.sh` adds it to `config/client_local.generated.yaml`.
 
 `install <dir> --editable` is for a module you write (one made from
 huri-plugin-template, named after its author: `servo`, not `huri-servo`). It
