@@ -463,8 +463,9 @@ def test_every_package_manager_installs_zstd_for_ollama():
     assert all("zstd" in packages.split() for packages in lists)
 
 
-def plan_modules(tmp_path, *flags):
-    """--plan-only on a faked CPU-only machine; the process, whatever its exit."""
+def plan_modules(tmp_path, *flags, enabled=None):
+    """--plan-only on a faked CPU-only machine; the process, whatever its exit.
+    enabled: the text of .huri-local/modules.enabled, absent when None."""
     bin_dir, _ = fake_git(tmp_path)
     repo = installer_copy(tmp_path)
     script = repo / "scripts" / "install_local.sh"
@@ -477,6 +478,9 @@ def plan_modules(tmp_path, *flags):
         'detect_tools() { HAS_DOCKER=""; HAS_OLLAMA=0; }\n'
     )
     script.write_text(head + fakes + 'main "$@"\n')
+    if enabled is not None:
+        (repo / ".huri-local").mkdir()
+        (repo / ".huri-local" / "modules.enabled").write_text(enabled)
     out = subprocess.run(
         [str(repo / "install.sh"), "--plan-only", "--profile", "cpu", *flags],
         cwd=repo,
@@ -529,3 +533,64 @@ def test_tts_cosyvoice_is_asked_for_through_tts(tmp_path):
     out = plan_modules(tmp_path, "--modules", "rag,tts_cosyvoice")
     assert out.returncode != 0
     assert "use tts with --tts-engine cosyvoice" in out.stdout + out.stderr
+
+
+def test_a_module_enabled_with_huri_hub_stays_in_the_plan(tmp_path):
+    out = plan_modules(tmp_path, enabled="# by huri hub\n\nthink\n")
+    planned = served(out).split(",")
+    assert planned[:5] == ["vad", "stt", "tag", "qag", "rag"]
+    assert planned[-1] == "think"
+
+
+@pytest.mark.parametrize(
+    "modules, enabled",
+    [("rag", "think\n"), ("rag,think", "think\n")],
+)
+def test_explicit_modules_unions_with_the_enabled_modules(tmp_path, modules, enabled):
+    out = plan_modules(tmp_path, "--modules", modules, enabled=enabled)
+    assert served(out) == "rag,think"
+
+
+def test_an_enabled_module_nothing_feeds_is_refused(tmp_path):
+    out = plan_modules(tmp_path, "--modules", "rag", enabled="think_stop\n")
+    text = out.stdout + out.stderr
+    assert out.returncode != 0
+    assert "think_stop needs huri.audio.out" in text
+    assert ".huri-local/modules.enabled" in text
+
+
+def test_an_enabled_module_that_is_in_no_registry_is_kept(tmp_path):
+    out = plan_modules(tmp_path, "--modules", "rag", enabled="servo\n")
+    assert served(out) == "rag,servo"
+    text = out.stdout + out.stderr
+    assert "servo not in registry.toml" in text and "not checked" in text
+
+
+def test_a_malformed_line_in_modules_enabled_is_refused(tmp_path):
+    out = plan_modules(tmp_path, "--modules", "rag", enabled="think\nthink, lips\n")
+    text = out.stdout + out.stderr
+    assert out.returncode != 0
+    assert "modules.enabled line 2" in text and "think, lips" in text
+
+
+def test_without_modules_enabled_the_plan_is_unchanged(tmp_path):
+    out = plan_modules(tmp_path, "--modules", "vad,stt,tag,qag,rag,think")
+    assert served(out) == "vad,stt,tag,qag,rag,think"
+
+
+def test_an_unlisted_enabled_module_is_not_given_to_module_requirements(tmp_path):
+    # module_requirements.py raises on names without a packages/ dir; the call
+    # sits deep in the install, so check the list it is handed.
+    head = INSTALLER.read_text().rsplit('main "$@"', 1)[0]
+    script = installer_copy(tmp_path) / "scripts" / "install_local.sh"
+    script.write_text(
+        head + "P_MODULES=rag,servo P_UNLISTED=servo\nserved_modules_listed\n"
+    )
+    out = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        stdin=subprocess.DEVNULL,
+    )
+    assert out.stdout.strip() == "rag", out.stdout + out.stderr

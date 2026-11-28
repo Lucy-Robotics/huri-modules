@@ -7,24 +7,29 @@ Two sources, merged by module name:
     (huri_hub.community).
 
 Nothing found here is ever imported or loaded: listing is not installing, and
-installing is not enabling (HURI_MODULES does that, on the server).
+installing is not enabling. `enable` (or `install --enable`) adds a module to
+the server's HURI_MODULES: in .huri-local/modules.enabled, which ./install.sh
+reads too, and in the configuration it generated.
 
 `huri hub` once huri-core's `huri` command finds it (entry point group
 `huri.commands`); `huri-hub` and `python -m huri_hub` are the same command.
 """
 
 import argparse
+import importlib
 import os
 import re
 import shlex
 import subprocess
 import sys
+import tempfile
 from importlib.metadata import PackageNotFoundError, distributions, version
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from huri_hub.community import TOPIC, catalog, read_repository, search
 from huri_hub.registry import (
+    CHECKOUT_MARKER,
     HURI_MODULES_REPO,
     HubModule,
     Registry,
@@ -35,6 +40,8 @@ from huri_hub.registry import (
 from huri_hub.web import Fetch, HubError, Warn, git_env, http_fetch, warn_stderr
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
+
+from huri_core.core.manifest import loads_toml
 
 # Distributions a curated package replaced. Left installed next to it, they
 # register its module names with other targets (huri-core then loads no module
@@ -147,10 +154,97 @@ def cmd_list(args: Any, fetch: Fetch, out: Callable[[str], None]) -> int:
     return 0
 
 
+def installed_events_version() -> Optional[str]:
+    try:
+        return version("huri-events")
+    except PackageNotFoundError:
+        return None
+
+
+def _install_editable(args: Any, out: Callable[[str], None]) -> int:
+    """pip install -e the checkout (and its events/ package, in the template's
+    layout), holding huri-core and huri-events at the installed versions."""
+    root = Path(args.module).resolve()
+    pyproject = root / "pyproject.toml"
+    if not pyproject.is_file():
+        raise HubError(
+            f"--editable takes a local checkout (a directory with a pyproject.toml), "
+            f"not {args.module!r}"
+        )
+    try:
+        registered = (
+            loads_toml(pyproject.read_text(encoding="utf-8"))
+            .get("project", {})
+            .get("entry-points", {})
+            .get("huri.modules", {})
+        )
+        names = list(registered)
+    except (OSError, ValueError, AttributeError) as e:
+        raise HubError(f"cannot read {pyproject}: {e}") from e
+    state = None
+    if args.enable:
+        names = [_enableable(n) for n in names]
+        if not names:
+            raise HubError(
+                f"{pyproject} registers no module (a huri.modules entry point): "
+                "nothing to enable"
+            )
+        state = state_dir()
+    pins = [f"huri-core=={installed_core_version()}"]
+    events = installed_events_version()
+    if events:
+        pins.append(f"huri-events=={events}")
+    paths = [root] + [p for p in [root / "events"] if (p / "pyproject.toml").is_file()]
+    # Without the pins pip may "fix" a range by replacing the installed libraries.
+    with tempfile.TemporaryDirectory() as tmp:
+        constraints = Path(tmp) / "constraints.txt"
+        constraints.write_text("\n".join(pins) + "\n", encoding="utf-8")
+        command = [sys.executable, "-m", "pip", "install", "-c", str(constraints)]
+        for path in paths:
+            command += ["-e", str(path)]
+        out("$ " + shlex.join(command))
+        out(f"constraints: {' '.join(pins)}")
+        if not args.dry_run:
+            code = subprocess.call(command, env=git_env())
+            if code != 0:
+                return code
+    if state is None:
+        for label in names or ["<module name>"]:
+            out(
+                "Installed, not enabled. To use it, add it to the server's "
+                f"HURI_MODULES (huri hub enable {label}) and {_client_config(label)}"
+            )
+    else:
+        for name in names:
+            if args.dry_run:
+                out(f"would enable {name} in {state / ENABLED_FILE}")
+            else:
+                importlib.invalidate_caches()
+                _enable(name, state, out)
+    out(
+        "The pins of its requirements-<variant>.txt are not installed: install "
+        "them yourself if it needs them."
+    )
+    return 0
+
+
 def cmd_install(args: Any, fetch: Fetch, out: Callable[[str], None]) -> int:
+    if args.editable:
+        return _install_editable(args, out)
     target, name = args.module, None
     targets = [target]
-    if not re.match(r"^(git\+|https?://|\.|/)", target):
+    by_url = bool(re.match(r"^(git\+|https?://|\.|/)", target))
+    state = None
+    if args.enable:
+        # Before pip runs: a failure after it would leave a half-done install.
+        if by_url:
+            raise HubError(
+                "--enable needs a module name, and a URL is not one: run "
+                "`huri hub enable <name>` after the install"
+            )
+        _enableable(target)
+        state = state_dir()
+    if not by_url:
         name = target
         registry = _read_registry(args, fetch)
         known = {m.name: m for m in registry.modules}
@@ -221,10 +315,19 @@ def cmd_install(args: Any, fetch: Fetch, out: Callable[[str], None]) -> int:
                 )
             return code
     label = name or "<module name>"
-    out(
-        "Installed, not enabled. To use it, add it to the server's HURI_MODULES and "
-        f"to the client config:\n  modules:\n    {label}:\n      name: {label}"
-    )
+    if state is None:
+        out(
+            "Installed, not enabled. To use it, add it to the server's HURI_MODULES "
+            f"(huri hub enable {label}) and {_client_config(label)}"
+        )
+    elif args.dry_run:
+        out(
+            f"would enable {label} in {state / ENABLED_FILE}. To use it in a "
+            f"session, add it {_client_config(label)}"
+        )
+    else:
+        importlib.invalidate_caches()  # pip just added distributions
+        _enable(label, state, out)
     if readme:
         # pip installs the package and its extra; model weights, hardware pins
         # (requirements-<variant>[.<module>].txt) or a setup script are not
@@ -233,6 +336,189 @@ def cmd_install(args: Any, fetch: Fetch, out: Callable[[str], None]) -> int:
             "What else it may need before it runs (model weights, hardware pins, "
             f"a setup script) is in its README: {readme}"
         )
+    return 0
+
+
+# The modules `huri hub enable` recorded, in the state directory (shared contract
+# with ./install.sh): one name per line, blank lines and # comments ignored.
+ENABLED_FILE = "modules.enabled"
+MODULE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_.:]*$")
+RESTART = ".huri-local/stop.sh && .huri-local/start.sh"
+
+
+def _module_name(name: str) -> str:
+    # It is written into files a shell sources: nothing but a module name.
+    if not MODULE_NAME.match(name):
+        raise HubError(f"{name!r} is not a module name")
+    return name
+
+
+def _enableable(name: str) -> str:
+    # ./install.sh dies on it in modules.enabled: the engine is its decision.
+    if _module_name(name) == "tts_cosyvoice":
+        raise HubError(
+            "tts_cosyvoice is not listed by name, use tts with --tts-engine "
+            "cosyvoice (./install.sh --tts-engine cosyvoice)"
+        )
+    return name
+
+
+def state_dir() -> Path:
+    """The .huri-local directory of the HuRI install to enable modules in:
+    HURI_STATE (.huri-local/env.sh exports it), else the checkout whose .venv
+    runs this command."""
+    if os.environ.get("HURI_STATE"):
+        return Path(os.environ["HURI_STATE"])
+    checkout = Path(sys.prefix).parent
+    if (checkout / CHECKOUT_MARKER).is_file():
+        return checkout / ".huri-local"
+    raise HubError(
+        f"no HuRI install found (HURI_STATE is unset, and {sys.prefix} is not the "
+        ".venv of a huri-modules checkout): source .huri-local/env.sh, or run the "
+        "hub of the server's .venv"
+    )
+
+
+def _client_config(name: str) -> str:
+    # A session only uses the modules its client config names.
+    return f"to the client config:\n  modules:\n    {name}:\n      name: {name}"
+
+
+def _read(path: Path) -> Optional[str]:
+    """The text of `path`, None when there is no such file."""
+    try:
+        return path.read_text(encoding="utf-8") if path.is_file() else None
+    except OSError as e:
+        raise HubError(f"cannot read {path}: {e.strerror}") from e
+
+
+def _write(path: Path, text: str) -> None:
+    # Through a temporary file: a crash never leaves a half-written file that
+    # the server, or ./install.sh, would then read.
+    tmp = path.with_name(f".{path.name}.tmp")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as e:
+        tmp.unlink(missing_ok=True)
+        raise HubError(f"cannot write {path}: {e.strerror}") from e
+
+
+def _allow_list_files(state: Path) -> List[Tuple[Path, str]]:
+    """The files ./install.sh generated, each with its HURI_MODULES line."""
+    return [
+        (
+            state.parent / "config" / "huri_local.generated.yaml",
+            r'^(\s*HURI_MODULES: ")([^"]*)(")',
+        ),
+        (state / "huri.env", r'^(HURI_MODULES=")([^"]*)(")'),
+    ]
+
+
+def _split(value: str) -> List[str]:
+    return [n.strip() for n in value.split(",") if n.strip()]
+
+
+def _allow_lists(state: Path) -> List[List[str]]:
+    """HURI_MODULES in each of those files that exists."""
+    found = []
+    for path, pattern in _allow_list_files(state):
+        text = _read(path)
+        if text is not None:
+            found += [_split(m.group(2)) for m in re.finditer(pattern, text, re.M)]
+    return found
+
+
+def _edit_allow_lists(state: Path, edit: Callable[[List[str]], List[str]]) -> None:
+    """Apply `edit` to HURI_MODULES in those files (a missing one is skipped)."""
+    for path, pattern in _allow_list_files(state):
+        text = _read(path)
+        if text is None:
+            continue
+        new = re.sub(
+            pattern,
+            lambda m: m.group(1) + ",".join(edit(_split(m.group(2)))) + m.group(3),
+            text,
+            flags=re.M,
+        )
+        if new != text:
+            _write(path, new)
+
+
+def _enabled(path: Path) -> List[str]:
+    lines = (_read(path) or "").splitlines()
+    return [n for n in (line.split("#", 1)[0].strip() for line in lines) if n]
+
+
+def _restart(state: Path, out: Callable[[str], None]) -> None:
+    if _allow_lists(state):
+        out(f"Restart the server to apply it: {RESTART}")
+    else:
+        out(
+            f"No configuration generated in {state.parent} yet: ./install.sh "
+            "will include it"
+        )
+
+
+def _enable(name: str, state: Path, out: Callable[[str], None]) -> None:
+    installed = set().union(*installed_distributions().values())
+    if name not in installed:
+        raise HubError(
+            f"{name!r} is not installed (installed modules: "
+            f"{', '.join(sorted(installed)) or 'none'}): huri hub install {name}"
+        )
+    path = state / ENABLED_FILE
+    listed = name in _enabled(path)
+    lists = _allow_lists(state)
+    # ./install.sh serves `tts` under its engine's name (tts_cosyvoice).
+    served = all(
+        name in names or (name == "tts" and "tts_cosyvoice" in names) for names in lists
+    )
+    if not listed and lists and served:
+        # Recorded, a later `disable` would take it from the installer's plan.
+        out(f"{name} is already enabled by the install plan")
+    elif listed and served:
+        out(f"{name} is already enabled")
+    else:
+        if not listed:
+            text = _read(path) or ""
+            sep = "\n" if text and not text.endswith("\n") else ""
+            _write(path, f"{text}{sep}{name}\n")
+        _edit_allow_lists(
+            state, lambda names: names if name in names else [*names, name]
+        )
+        out(f"Enabled {name}.")
+        _restart(state, out)
+    out(f"To use it in a session, add it {_client_config(name)}")
+
+
+def cmd_enable(args: Any, fetch: Fetch, out: Callable[[str], None]) -> int:
+    name = _enableable(args.module)
+    _enable(name, state_dir(), out)
+    return 0
+
+
+def cmd_disable(args: Any, fetch: Fetch, out: Callable[[str], None]) -> int:
+    # Only what `enable` recorded: a module of the install plan is the
+    # installer's, and ./install.sh would bring it back anyway.
+    name = _module_name(args.module)
+    state = state_dir()
+    path = state / ENABLED_FILE
+    if name not in _enabled(path):
+        if any(name in names for names in _allow_lists(state)):
+            raise HubError(
+                f"{name!r} was not enabled by huri hub but by the install plan: "
+                "re-run ./install.sh --modules <the modules to keep> to leave it out"
+            )
+        raise HubError(f"{name!r} is not enabled")
+    lines = (_read(path) or "").splitlines(keepends=True)
+    _write(
+        path, "".join(line for line in lines if line.split("#", 1)[0].strip() != name)
+    )
+    _edit_allow_lists(state, lambda names: [n for n in names if n != name])
+    out(f"Disabled {name}.")
+    _restart(state, out)
     return 0
 
 
@@ -281,9 +567,15 @@ def main(
     )
     p.set_defaults(run=cmd_list)
 
-    p = sub.add_parser("install", help="pip-install a module (does not enable it)")
+    p = sub.add_parser("install", help="pip-install a module")
     p.add_argument("module", help="a module name, or a pip target (git+https://...)")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--enable", action="store_true", help="then enable it (see enable)")
+    p.add_argument(
+        "--editable",
+        action="store_true",
+        help="install a local checkout in place (pip install -e), for development",
+    )
     p.add_argument(
         "--community",
         action="store_true",
@@ -293,6 +585,14 @@ def main(
         "--registry", help="registry.toml path or URL, or a huri-modules checkout"
     )
     p.set_defaults(run=cmd_install)
+
+    for command, run, help_ in (
+        ("enable", cmd_enable, "add an installed module to the server's HURI_MODULES"),
+        ("disable", cmd_disable, "remove a module `enable` added"),
+    ):
+        p = sub.add_parser(command, help=help_)
+        p.add_argument("module", help="a module name")
+        p.set_defaults(run=run)
 
     args = parser.parse_args(argv)
     try:

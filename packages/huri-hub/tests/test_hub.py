@@ -7,6 +7,7 @@ repository root reads the real file).
 
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -65,9 +66,12 @@ def registry(checkout):
 
 @pytest.fixture(autouse=True)
 def isolated(monkeypatch, tmp_path):
-    """No ambient HURI_* setting, and no checkout around the current directory."""
-    for var in ("HURI_MODULES_REF", "HURI_REGISTRY", "HURI_REF"):
+    """No ambient HURI_* setting, no checkout around the current directory, and
+    no checkout around the interpreter (a shell that sourced .huri-local/env.sh,
+    or a checkout's .venv, would otherwise enable modules in the real one)."""
+    for var in ("HURI_MODULES_REF", "HURI_REGISTRY", "HURI_REF", "HURI_STATE"):
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(sys, "prefix", str(tmp_path / "elsewhere" / "venv"))
     monkeypatch.setattr(cli, "installed_core_version", lambda: "0.4.0")
     monkeypatch.setattr(cli, "installed_distributions", lambda: {})
 
@@ -797,3 +801,330 @@ def test_stale_settings_are_not_ignored_silently(capsys, checkout, monkeypatch):
     assert cli.main(["list", "--verified"], fetch=fetch) == 0
     err = capsys.readouterr().err
     assert "HURI_MODULES_REF=0.1.0 ignored: using the huri-modules checkout" in err
+
+
+SERVE_YAML = """\
+applications:
+  - name: huri
+    runtime_env:
+      env_vars:
+        HURI_MODULES: "vad,stt"
+        HURI_ACTUATION_MODULES: "mov"
+"""
+HURI_ENV = 'HURI_MODULES="vad,stt"\nHURI_ACTUATION_MODULES="mov"\n'
+RESTART = ".huri-local/stop.sh && .huri-local/start.sh"
+
+
+@pytest.fixture
+def server(tmp_path, monkeypatch):
+    """A checkout ./install.sh installed, its env.sh sourced (HURI_STATE), with
+    think installed in its venv."""
+    state = tmp_path / ".huri-local"
+    state.mkdir()
+    (state / "huri.env").write_text(HURI_ENV)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "huri_local.generated.yaml").write_text(SERVE_YAML)
+    monkeypatch.setenv("HURI_STATE", str(state))
+    installed = {"huri-module-think": {"think"}, "huri-module-stt": {"stt"}}
+    monkeypatch.setattr(cli, "installed_distributions", lambda: installed)
+    return tmp_path
+
+
+def fake_pip(monkeypatch):
+    """The pip commands run, each succeeding."""
+    calls = []
+    monkeypatch.setattr(
+        cli.subprocess, "call", lambda cmd, env=None: calls.append(cmd) or 0
+    )
+    return calls
+
+
+def enabled(repo):
+    return (repo / ".huri-local" / "modules.enabled").read_text().splitlines()
+
+
+def allow_lists(repo):
+    """HURI_MODULES of the generated Serve config and of huri.env."""
+    yaml = (repo / "config" / "huri_local.generated.yaml").read_text()
+    env = (repo / ".huri-local" / "huri.env").read_text()
+    return (
+        re.search(r'^\s*HURI_MODULES: "([^"]*)"', yaml, re.M).group(1),
+        re.search(r'^HURI_MODULES="([^"]*)"', env, re.M).group(1),
+    )
+
+
+def test_enabling_an_installed_module(capsys, server):
+    code, out = run(["enable", "think"], capsys)
+    assert code == 0
+    assert enabled(server) == ["think"]
+    assert allow_lists(server) == ("vad,stt,think", "vad,stt,think")
+    assert (
+        'HURI_ACTUATION_MODULES: "mov"'
+        in (server / "config" / "huri_local.generated.yaml").read_text()
+    )
+    assert f"Restart the server to apply it: {RESTART}" in out
+    # Sessions only use the modules their client names.
+    assert "modules:\n    think:\n      name: think" in out
+
+
+def test_install_with_enable_installs_then_enables(capsys, checkout, monkeypatch):
+    calls = fake_pip(monkeypatch)
+    monkeypatch.setenv("HURI_STATE", str(checkout / ".huri-local"))
+    monkeypatch.setattr(
+        cli, "installed_distributions", lambda: {"huri-module-stt": {"stt"}}
+    )
+    code, out = run(["install", "stt", "--enable", "--registry", str(checkout)], capsys)
+    assert code == 0 and len(calls) == 1 and calls[0][1:4] == ["-m", "pip", "install"]
+    assert enabled(checkout) == ["stt"]
+
+
+def test_enabling_twice_changes_nothing(capsys, server):
+    run(["enable", "think"], capsys)
+    code, out = run(["enable", "think"], capsys)
+    assert code == 0 and "think is already enabled" in out
+    assert enabled(server) == ["think"]
+    assert allow_lists(server) == ("vad,stt,think", "vad,stt,think")
+
+
+def test_enabling_a_module_that_is_not_installed_is_refused(capsys, server):
+    assert cli.main(["enable", "servo"], fetch=fetch) == 1
+    err = capsys.readouterr().err
+    assert "'servo' is not installed (installed modules: stt, think)" in err
+    assert not (server / ".huri-local" / "modules.enabled").exists()
+    assert allow_lists(server) == ("vad,stt", "vad,stt")
+
+
+def test_an_invalid_module_name_is_refused(capsys, server):
+    assert cli.main(["enable", "think\nrm"], fetch=fetch) == 1
+    assert "not a module name" in capsys.readouterr().err
+    assert not (server / ".huri-local" / "modules.enabled").exists()
+
+
+def test_no_huri_install_fails_before_pip_runs(capsys, registry, monkeypatch):
+    calls = fake_pip(monkeypatch)
+    argv = ["install", "stt", "--enable", "--registry", registry]
+    assert cli.main(argv, fetch=fetch) == 1
+    assert calls == []
+    assert "source .huri-local/env.sh" in capsys.readouterr().err
+
+
+def test_a_checkout_never_installed_gets_its_modules_enabled_file(
+    capsys, checkout, monkeypatch
+):
+    monkeypatch.setattr(sys, "prefix", str(checkout / ".venv"))
+    monkeypatch.setattr(cli, "installed_distributions", lambda: {"x": {"think"}})
+    code, out = run(["enable", "think"], capsys)
+    assert code == 0 and enabled(checkout) == ["think"]
+    assert not (checkout / "config").exists()
+    assert "./install.sh will include it" in out and RESTART not in out
+
+
+def test_dry_run_enables_nothing(capsys, checkout, monkeypatch):
+    monkeypatch.setenv("HURI_STATE", str(checkout / ".huri-local"))
+    argv = ["install", "stt", "--enable", "--dry-run", "--registry", str(checkout)]
+    code, out = run(argv, capsys)
+    assert code == 0 and pip_targets(out) and "would enable stt" in out
+    assert not (checkout / ".huri-local").exists()
+
+
+def test_install_by_url_with_enable_fails_before_pip(capsys, server, monkeypatch):
+    calls = fake_pip(monkeypatch)
+    argv = ["install", "git+https://example.org/x.git", "--enable"]
+    assert cli.main(argv, fetch=fetch) == 1
+    assert calls == []
+    assert "run `huri hub enable <name>` after the install" in capsys.readouterr().err
+
+
+def test_disabling_an_enabled_module(capsys, server):
+    run(["enable", "think"], capsys)
+    path = server / ".huri-local" / "modules.enabled"
+    path.write_text("# mine\nthink\nlights\nthink  # again\n")
+    code, out = run(["disable", "think"], capsys)
+    assert code == 0
+    assert enabled(server) == ["# mine", "lights"]
+    assert allow_lists(server) == ("vad,stt", "vad,stt")
+    assert f"Restart the server to apply it: {RESTART}" in out
+
+
+def test_disabling_a_module_that_is_not_enabled_is_refused(capsys, server):
+    before = allow_lists(server)
+    assert cli.main(["disable", "think"], fetch=fetch) == 1
+    assert "'think' is not enabled" in capsys.readouterr().err
+    # A module of the install plan is the installer's to drop, not the hub's.
+    assert cli.main(["disable", "stt"], fetch=fetch) == 1
+    assert "./install.sh --modules" in capsys.readouterr().err
+    assert allow_lists(server) == before
+    assert not (server / ".huri-local" / "modules.enabled").exists()
+
+
+def test_a_module_the_install_plan_serves_is_left_to_the_installer(capsys, server):
+    code, out = run(["enable", "stt"], capsys)
+    assert code == 0 and "stt is already enabled by the install plan" in out
+    assert not (server / ".huri-local" / "modules.enabled").exists()
+    assert cli.main(["disable", "stt"], fetch=fetch) == 1
+    assert "./install.sh --modules" in capsys.readouterr().err
+    assert allow_lists(server) == ("vad,stt", "vad,stt")
+
+
+def test_tts_cosyvoice_is_enabled_as_tts_with_its_engine(capsys, server, monkeypatch):
+    monkeypatch.setattr(
+        cli, "installed_distributions", lambda: {"huri-module-tts": {"tts_cosyvoice"}}
+    )
+    assert cli.main(["enable", "tts_cosyvoice"], fetch=fetch) == 1
+    assert "use tts with --tts-engine cosyvoice" in capsys.readouterr().err
+    assert not (server / ".huri-local" / "modules.enabled").exists()
+    calls = fake_pip(monkeypatch)
+    assert cli.main(["install", "tts_cosyvoice", "--enable"], fetch=fetch) == 1
+    assert calls == []
+    assert "use tts with --tts-engine cosyvoice" in capsys.readouterr().err
+
+
+def test_an_empty_allow_list_gets_the_module_alone(capsys, server):
+    # huri-core loads no module for an empty HURI_MODULES (default-deny).
+    for path in (
+        server / "config" / "huri_local.generated.yaml",
+        server / ".huri-local" / "huri.env",
+    ):
+        path.write_text(path.read_text().replace('"vad,stt"', '""'))
+    assert run(["enable", "think"], capsys)[0] == 0
+    assert allow_lists(server) == ("think", "think")
+
+
+def test_checking_a_disable_rewrites_nothing(capsys, server):
+    env = server / ".huri-local" / "huri.env"
+    env.write_text(env.read_text().replace('"vad,stt"', '"vad, stt"'))
+    assert cli.main(["disable", "think"], fetch=fetch) == 1
+    assert 'HURI_MODULES="vad, stt"' in env.read_text()
+
+
+def test_an_unwritable_state_is_a_readable_error(capsys, server):
+    (server / ".huri-local" / "modules.enabled").mkdir()
+    assert cli.main(["enable", "think"], fetch=fetch) == 1
+    assert "huri hub: cannot write " in capsys.readouterr().err
+
+
+def test_tts_is_served_by_a_plan_with_the_cosyvoice_engine(capsys, server, monkeypatch):
+    # ./install.sh serves a recorded `tts` as tts_cosyvoice, this engine's name.
+    for path in (
+        server / "config" / "huri_local.generated.yaml",
+        server / ".huri-local" / "huri.env",
+    ):
+        path.write_text(
+            path.read_text().replace('"vad,stt"', '"vad,stt,tts_cosyvoice"')
+        )
+    monkeypatch.setattr(
+        cli,
+        "installed_distributions",
+        lambda: {"huri-module-tts": {"tts", "tts_cosyvoice"}},
+    )
+    code, out = run(["enable", "tts"], capsys)
+    assert code == 0 and "tts is already enabled by the install plan" in out
+    assert not (server / ".huri-local" / "modules.enabled").exists()
+    assert allow_lists(server) == ("vad,stt,tts_cosyvoice",) * 2
+
+
+def checkout_of_a_module(tmp_path, name="servo", entry=True):
+    """A checkout made from huri-plugin-template: the module, and events/."""
+    root = tmp_path / name
+    (root / "events").mkdir(parents=True)
+    ep = (
+        f'[project.entry-points."huri.modules"]\n{name} = "{name}.module:Shouter"\n'
+        if entry
+        else ""
+    )
+    (root / "pyproject.toml").write_text(f'[project]\nname = "{name}"\n{ep}')
+    (root / "events" / "pyproject.toml").write_text(
+        f'[project]\nname = "{name}-events"\n'
+    )
+    return root
+
+
+def test_a_module_under_development_is_installed_and_enabled_in_one_command(
+    capsys, server, monkeypatch, tmp_path
+):
+    root = checkout_of_a_module(tmp_path)
+    seen = {}
+
+    def pip(cmd, env=None):
+        seen["cmd"] = cmd
+        seen["constraints"] = Path(cmd[cmd.index("-c") + 1]).read_text().split()
+        return 0
+
+    monkeypatch.setattr(cli.subprocess, "call", pip)
+    monkeypatch.setattr(cli, "installed_core_version", lambda: "0.5.0")
+    monkeypatch.setattr(cli, "installed_events_version", lambda: "0.2.0")
+    monkeypatch.setattr(
+        cli,
+        "installed_distributions",
+        lambda: {"servo": {"servo"}},
+    )
+    code, out = run(["install", str(root), "--editable", "--enable"], capsys)
+    assert code == 0
+    cmd = seen["cmd"]
+    assert cmd[cmd.index("-e") :][:4] == ["-e", str(root), "-e", str(root / "events")]
+    assert seen["constraints"] == ["huri-core==0.5.0", "huri-events==0.2.0"]
+    assert not Path(cmd[cmd.index("-c") + 1]).exists()
+    assert enabled(server) == ["servo"]
+    assert "requirements-" in out and "not installed" in out
+
+
+def test_editable_dry_run_enables_nothing(capsys, server, monkeypatch, tmp_path):
+    root = checkout_of_a_module(tmp_path)
+    calls = fake_pip(monkeypatch)
+    argv = ["install", str(root), "--editable", "--enable", "--dry-run"]
+    code, out = run(argv, capsys)
+    assert code == 0 and not calls and "-e " in out and "would enable servo" in out
+    assert not (server / ".huri-local" / "modules.enabled").exists()
+
+
+def test_editable_needs_a_local_directory(capsys, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)  # no stray ./think
+    calls = fake_pip(monkeypatch)
+    assert cli.main(["install", "think", "--editable"], fetch=fetch) == 1
+    assert "--editable takes a local checkout" in capsys.readouterr().err
+    assert not calls
+
+
+def test_a_checkout_that_registers_no_module_is_not_enabled(
+    capsys, server, monkeypatch, tmp_path
+):
+    calls = fake_pip(monkeypatch)
+    root = checkout_of_a_module(tmp_path, "notamodule", entry=False)
+    argv = ["install", str(root), "--editable", "--enable"]
+    assert cli.main(argv, fetch=fetch) == 1
+    assert str(root / "pyproject.toml") in capsys.readouterr().err
+    assert not calls
+
+
+def test_a_module_name_from_a_checkout_is_validated_before_pip(
+    capsys, server, monkeypatch, tmp_path
+):
+    calls = fake_pip(monkeypatch)
+    root = checkout_of_a_module(tmp_path)
+    (root / "pyproject.toml").write_text(
+        '[project]\nname = "x"\n[project.entry-points."huri.modules"]\n'
+        '"x;y" = "x.m:C"\n'
+    )
+    assert cli.main(["install", str(root), "--editable", "--enable"], fetch=fetch) == 1
+    assert "not a module name" in capsys.readouterr().err
+    assert not calls
+    assert not (server / ".huri-local" / "modules.enabled").exists()
+
+
+def test_a_module_is_enabled_only_after_pip_succeeds(
+    capsys, server, monkeypatch, tmp_path
+):
+    root = checkout_of_a_module(tmp_path)
+    monkeypatch.setattr(cli.subprocess, "call", lambda cmd, env=None: 1)
+    monkeypatch.setattr(cli, "installed_distributions", lambda: {"servo": {"servo"}})
+    assert run(["install", str(root), "--editable", "--enable"], capsys)[0] == 1
+    assert not (server / ".huri-local" / "modules.enabled").exists()
+
+
+def test_editable_without_enable_installs_only(capsys, monkeypatch, tmp_path):
+    fake_pip(monkeypatch)
+    root = checkout_of_a_module(tmp_path)
+    code, out = run(["install", str(root), "--editable"], capsys)
+    assert (
+        code == 0 and "Installed, not enabled" in out and "huri hub enable servo" in out
+    )

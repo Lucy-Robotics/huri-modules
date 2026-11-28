@@ -144,6 +144,13 @@ and therefore which Serve deployments exist. The **client** config must list the
 same module names — a client asking for a module the server did not register is
 rejected with a `session_error` naming both sets.
 
+The modules listed in `.huri-local/modules.enabled` (written by `huri hub enable`)
+are added to `HURI_MODULES`, with or without `--modules`. That is how a module
+you develop is served locally: `huri hub install ./servo --editable --enable`
+(see [Finding modules](#finding-modules-huri-hub)). Run it in the server's
+environment (a shell that sourced `.huri-local/env.sh`): it installs into the
+Python that runs it.
+
 `./install.sh --help` lists every flag.
 
 ## The curated modules
@@ -404,9 +411,10 @@ yourself (when nothing else uses that cluster) before `start.sh`.
 | `Task was killed due to the node running low on memory`        | The plan did fit but Ollama's KV cache grew. Use a smaller tier: `--llm-model mistral:7b`, and `ollama stop <big-model>`.                                            |
 | `torch sees the GPU but cannot launch a kernel on it`          | The torch build has no code objects for your GPU. `--only config` sets `HSA_OVERRIDE_GFX_VERSION` when a compatible same-family arch exists; otherwise run CPU-only. |
 | Client exits with `session_error: Unknown module 'x'`          | The client config lists a module the server did not register. Match it to `HURI_MODULES`, or regenerate both with `--only config`.                                   |
-| Client exits with `session_error: Module 'x' is installed but not enabled` | The server's `HURI_MODULES` does not list it (unset enables nothing). Add it there, or drop it from the client config. |
+| Client exits with `session_error: Module 'x' is installed but not enabled` | The server's `HURI_MODULES` does not list it (unset enables nothing). Add it there (`huri hub enable <name>`), or drop it from the client config. |
 | The server refuses to start: the installed `huri-core` is not in a module's range | The core in the venv is not the one this checkout is tested with. `./install.sh --only python` reinstalls huri-core at the commit `HURI_CORE_REF` (versions.env) names now (a branch such as `dev` included); or check out the huri-modules release matching your core (see [Versions](#versions-and-compatibility)). |
 | `qdrant is not answering … HuRI does not manage this instance` | Something else already owned the port when you installed, so HuRI never created its own. Start it yourself, or free the port and re-run `--only services`.           |
+| A module is installed but the server does not load it | `HURI_MODULES` is an allow-list: `huri hub enable <name>` (or `install --enable`), then `.huri-local/stop.sh && .huri-local/start.sh`. |
 | No audio from the client                                       | Check TTS is actually enabled (`grep HURI_MODULES config/huri_local.generated.yaml`) — with `--modules` or a dropped plan there may be no TTS at all.                |
 | No module loads: `entry point 'tts' is registered twice` | An environment from before huri-module-tts still has the three packages it replaced. `./install.sh --only python` removes them; otherwise `pip uninstall huri-tts huri-module-tts-piper huri-module-tts-cosyvoice`, then install huri-module-tts. |
 | `cannot reach huri-core at ref X`                              | git could not read the repository (offline, or it answered 401: missing or private; git is never allowed to prompt). Check the ref in `versions.env`, or point `HURI_CORE_PATH` at a local checkout. |
@@ -665,9 +673,20 @@ huri hub search gesture             # GitHub repositories tagged `huri-module`
 huri hub list                       # modules supporting the installed huri-core
 huri hub list --verified            # only this registry
 huri hub list --core 0.5.0 --all    # another version; --all keeps unsupported ones
-huri hub install stt                # pip-installs a verified module; never enables it
+huri hub install stt                # pip-installs a verified module, not enabled
 huri hub install servo --community  # an unreviewed one: only when asked explicitly
+huri hub install think --enable     # install, then add it to the server's HURI_MODULES
+huri hub enable think               # an installed module: .huri-local/modules.enabled + the generated config
+huri hub disable think              # undo `enable` (a module of the install plan stays: see --modules)
+huri hub install ./servo --editable --enable  # your own module, installed in place and enabled
 ```
+
+`enable` records the name in `.huri-local/modules.enabled` (read by `./install.sh`
+too) and in the generated `HURI_MODULES`; restart the server to apply it.
+`--editable` takes a local checkout (a `pyproject.toml`, plus `events/` in the
+huri-plugin-template layout), holds huri-core and huri-events at the installed
+versions, and with `--enable` enables the `huri.modules` entry points it
+declares. Its `requirements-<variant>.txt` pins are not installed.
 
 The command comes from [`huri-hub`](packages/huri-hub), a light package of this
 repository (huri-core's base install and `packaging`: no Ray, no torch).
