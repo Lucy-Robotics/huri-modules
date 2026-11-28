@@ -279,8 +279,8 @@ counterpart of the Docker images in `deploy/` and the Helm chart in `helm/`. It
 probes the machine (GPU vendor, VRAM, RAM, disk, Python), works out which parts
 of the pipeline actually fit, and then installs only those: system packages, a
 virtualenv with the right torch build, huri-core and the curated packages,
-huri-cli (unless `--no-cli`), the model weights, Qdrant and Ollama, plus a Ray
-Serve config matching the plan.
+huri-cli (unless `--no-cli`, or no release fits the installed core), the model
+weights, Qdrant and Ollama, plus a Ray Serve config matching the plan.
 
 It generates:
 
